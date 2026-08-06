@@ -1,0 +1,253 @@
+'use client';
+
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import {
+  UserRole,
+  UserProfile,
+  ScheduledTrip,
+  Shipment,
+  Bus,
+  Route,
+  Stop,
+  Depot,
+  CourierCompany,
+  ShipmentStatus
+} from '@/lib/types';
+import {
+  INITIAL_STOPS,
+  INITIAL_DEPOTS,
+  INITIAL_ROUTES,
+  INITIAL_BUSES,
+  INITIAL_SCHEDULED_TRIPS,
+  INITIAL_COURIER_COMPANIES,
+  INITIAL_SHIPMENTS,
+  DEMO_USER_PROFILES
+} from '@/lib/mock-data';
+
+interface CargoFlowContextType {
+  currentRole: UserRole;
+  currentProfile: UserProfile;
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+  switchRole: (role: UserRole) => void;
+  
+  stops: Stop[];
+  depots: Depot[];
+  routes: Route[];
+  buses: Bus[];
+  trips: ScheduledTrip[];
+  shipments: Shipment[];
+  courierCompanies: CourierCompany[];
+
+  createShipment: (shipmentData: Omit<Shipment, 'id' | 'waybillNumber' | 'createdAt' | 'statusHistory' | 'status'>) => Shipment;
+  updateShipmentStatus: (shipmentId: string, newStatus: ShipmentStatus, locationRemarks?: string) => void;
+  
+  // Realtime Simulation State
+  isSimulating: boolean;
+  toggleSimulation: () => void;
+  selectedTripId: string | null;
+  setSelectedTripId: (tripId: string | null) => void;
+  selectedShipmentId: string | null;
+  setSelectedShipmentId: (shipmentId: string | null) => void;
+
+  // Stats calculation
+  totalRevenue: number;
+  totalCapacityKg: number;
+  utilizedCapacityKg: number;
+  networkUtilizationPercentage: number;
+}
+
+const CargoFlowContext = createContext<CargoFlowContextType | undefined>(undefined);
+
+export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
+  const [currentRole, setCurrentRole] = useState<UserRole>('SUPER_ADMIN');
+  const [currentProfile, setCurrentProfile] = useState<UserProfile>(DEMO_USER_PROFILES[0]);
+  const [activeTab, setActiveTab] = useState<string>('fleet-map');
+
+  const [stops] = useState<Stop[]>(INITIAL_STOPS);
+  const [depots] = useState<Depot[]>(INITIAL_DEPOTS);
+  const [routes] = useState<Route[]>(INITIAL_ROUTES);
+  const [buses] = useState<Bus[]>(INITIAL_BUSES);
+  const [trips, setTrips] = useState<ScheduledTrip[]>(INITIAL_SCHEDULED_TRIPS);
+  const [shipments, setShipments] = useState<Shipment[]>(INITIAL_SHIPMENTS);
+  const [courierCompanies] = useState<CourierCompany[]>(INITIAL_COURIER_COMPANIES);
+
+  const [isSimulating, setIsSimulating] = useState<boolean>(true);
+  const [selectedTripId, setSelectedTripId] = useState<string | null>('TRP001');
+  const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>('shp-1001');
+
+  // Switch role and update persona + sensible default activeTab
+  const switchRole = (role: UserRole) => {
+    setCurrentRole(role);
+    const profile = DEMO_USER_PROFILES.find(p => p.role === role) || DEMO_USER_PROFILES[0];
+    setCurrentProfile(profile);
+
+    if (role === 'SUPER_ADMIN') {
+      setActiveTab('fleet-map');
+    } else if (role === 'COURIER_PARTNER') {
+      setActiveTab('book-capacity');
+    } else if (role === 'CONDUCTOR') {
+      setActiveTab('today-trips');
+    }
+  };
+
+  // Create Shipment Function
+  const createShipment = (
+    data: Omit<Shipment, 'id' | 'waybillNumber' | 'createdAt' | 'statusHistory' | 'status'>
+  ): Shipment => {
+    const timestamp = new Date().toISOString();
+    const waybillNumber = `WB-${new Date().getFullYear()}-MSR-${Math.floor(1000 + Math.random() * 9000)}`;
+    const qrCodeHash = `CF-QR-${Math.floor(100 + Math.random() * 900)}-${data.tripId}`;
+
+    const newShipment: Shipment = {
+      ...data,
+      id: `shp-${Date.now()}`,
+      waybillNumber,
+      qrCodeHash,
+      status: 'RESERVED',
+      createdAt: timestamp,
+      statusHistory: [
+        {
+          status: 'RESERVED',
+          timestamp,
+          location: 'Origin Depot Station',
+          remarks: `Capacity reserved on Bus Trip ${data.tripId}`
+        }
+      ]
+    };
+
+    setShipments(prev => [newShipment, ...prev]);
+
+    // Deduct capacity from the trip
+    setTrips(prev =>
+      prev.map(t => {
+        if (t.id === data.tripId) {
+          const newAvail = Math.max(0, t.availableCargoCapacityKg - data.weightKg);
+          return { ...t, availableCargoCapacityKg: newAvail };
+        }
+        return t;
+      })
+    );
+
+    return newShipment;
+  };
+
+  // Update Shipment Status Function
+  const updateShipmentStatus = (shipmentId: string, newStatus: ShipmentStatus, locationRemarks?: string) => {
+    const timestamp = new Date().toISOString();
+
+    setShipments(prev =>
+      prev.map(shp => {
+        if (shp.id === shipmentId) {
+          const updatedHistory = [
+            ...shp.statusHistory,
+            {
+              status: newStatus,
+              timestamp,
+              location: currentProfile.depotName || 'Depot Bay Station',
+              remarks: locationRemarks || `Status updated to ${newStatus}`
+            }
+          ];
+          return {
+            ...shp,
+            status: newStatus,
+            statusHistory: updatedHistory
+          };
+        }
+        return shp;
+      })
+    );
+
+    // If shipment is DELIVERED or CANCELLED, restore capacity to trip
+    if (newStatus === 'DELIVERED' || newStatus === 'CANCELLED') {
+      const targetShipment = shipments.find(s => s.id === shipmentId);
+      if (targetShipment) {
+        setTrips(prev =>
+          prev.map(t => {
+            if (t.id === targetShipment.tripId) {
+              const restoredAvail = Math.min(t.totalCargoCapacityKg, t.availableCargoCapacityKg + targetShipment.weightKg);
+              return { ...t, availableCargoCapacityKg: restoredAvail };
+            }
+            return t;
+          })
+        );
+      }
+    }
+  };
+
+  // Realtime bus GPS jitter animation simulator to make the app feel alive
+  useEffect(() => {
+    if (!isSimulating) return;
+
+    const interval = setInterval(() => {
+      setTrips(prevTrips =>
+        prevTrips.map(trip => {
+          if (trip.tripStatus === 'IN_TRANSIT' && trip.currentLocation) {
+            // Small subtle GPS coordinate interpolation
+            const latDelta = (Math.random() - 0.48) * 0.0015;
+            const lngDelta = (Math.random() - 0.48) * 0.0015;
+            return {
+              ...trip,
+              currentLocation: {
+                ...trip.currentLocation,
+                latitude: Number((trip.currentLocation.latitude + latDelta).toFixed(6)),
+                longitude: Number((trip.currentLocation.longitude + lngDelta).toFixed(6))
+              }
+            };
+          }
+          return trip;
+        })
+      );
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [isSimulating]);
+
+  // Network stats calculations
+  const totalRevenue = shipments.reduce((sum, s) => sum + (s.status !== 'CANCELLED' ? s.fareAmount : 0), 12850);
+  const totalCapacityKg = trips.reduce((sum, t) => sum + t.totalCargoCapacityKg, 0);
+  const availableCapacityKg = trips.reduce((sum, t) => sum + t.availableCargoCapacityKg, 0);
+  const utilizedCapacityKg = Math.max(0, totalCapacityKg - availableCapacityKg);
+  const networkUtilizationPercentage = Math.round((utilizedCapacityKg / (totalCapacityKg || 1)) * 100);
+
+  return (
+    <CargoFlowContext.Provider
+      value={{
+        currentRole,
+        currentProfile,
+        activeTab,
+        setActiveTab,
+        switchRole,
+        stops,
+        depots,
+        routes,
+        buses,
+        trips,
+        shipments,
+        courierCompanies,
+        createShipment,
+        updateShipmentStatus,
+        isSimulating,
+        toggleSimulation: () => setIsSimulating(!isSimulating),
+        selectedTripId,
+        setSelectedTripId,
+        selectedShipmentId,
+        setSelectedShipmentId,
+        totalRevenue,
+        totalCapacityKg,
+        utilizedCapacityKg,
+        networkUtilizationPercentage
+      }}
+    >
+      {children}
+    </CargoFlowContext.Provider>
+  );
+}
+
+export function useCargoFlow() {
+  const context = useContext(CargoFlowContext);
+  if (!context) {
+    throw new Error('useCargoFlow must be used within a CargoFlowProvider');
+  }
+  return context;
+}

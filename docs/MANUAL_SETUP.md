@@ -27,9 +27,9 @@ APP_URL="https://your-app-url.run.app"
 ---
 
 ## 3. Database Migration Execution
-1. Navigate to the Supabase SQL Editor.
-2. Paste and run the schema migration script provided in `docs/schema.sql` (generated immediately upon database schema approval).
-3. Run the initial seed script to populate MSRTC Nashik division stops, routes, buses, and scheduled trips.
+1. Navigate to your Supabase project SQL Editor.
+2. Open and run `docs/schema.sql` to create all tables, indexes, triggers, and RLS policies.
+3. Open and run `docs/seed.sql` to populate MSRTC Nashik division network data (50 stops, 10 depots, 25 routes, 30 buses, and 60 scheduled trips).
 
 ---
 

@@ -1,1 +1,36 @@
 @import "tailwindcss";
+
+/* Custom Leaflet overrides for sleek map aesthetic */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  background-color: #e5e7eb !important;
+  font-family: inherit;
+  z-index: 1;
+}
+
+.leaflet-control-zoom {
+  border: none !important;
+  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1) !important;
+  border-radius: 9999px !important;
+  overflow: hidden;
+}
+
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  font-weight: bold !important;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 1rem !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+  padding: 4px !important;
+}
+
+.leaflet-popup-tip {
+  background: white !important;
+}
+
