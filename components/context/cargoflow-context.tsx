@@ -11,7 +11,9 @@ import {
   Stop,
   Depot,
   CourierCompany,
-  ShipmentStatus
+  ShipmentStatus,
+  CourierRegistrationInput,
+  AuthSession,
 } from '@/lib/types';
 import {
   INITIAL_STOPS,
@@ -19,18 +21,38 @@ import {
   INITIAL_ROUTES,
   INITIAL_BUSES,
   INITIAL_SCHEDULED_TRIPS,
-  INITIAL_COURIER_COMPANIES,
   INITIAL_SHIPMENTS,
-  DEMO_USER_PROFILES
+  DEMO_USER_PROFILES,
 } from '@/lib/mock-data';
+import {
+  getCurrentAuthSession,
+  loginWithEmailPassword,
+  registerCourierPartner,
+  signOutAuth,
+  fetchAllCourierCompanies,
+  updateCourierCompanyStatus,
+} from '@/lib/auth-service';
 
 interface CargoFlowContextType {
   currentRole: UserRole;
   currentProfile: UserProfile;
+  currentCompany: CourierCompany | null;
+  isAuthenticated: boolean;
+  isLoadingAuth: boolean;
   activeTab: string;
   setActiveTab: (tab: string) => void;
   switchRole: (role: UserRole) => void;
+
+  // Auth actions
+  login: (email: string, pass: string) => Promise<{ success: boolean; session?: AuthSession; error?: string }>;
+  registerCourier: (input: CourierRegistrationInput) => Promise<{ success: boolean; session?: AuthSession; error?: string }>;
+  logout: () => Promise<void>;
   
+  // Company management for Super Admin
+  approveCompany: (companyId: string) => Promise<void>;
+  rejectCompany: (companyId: string, reason?: string) => Promise<void>;
+  refreshCompanies: () => Promise<void>;
+
   stops: Stop[];
   depots: Depot[];
   routes: Route[];
@@ -62,6 +84,10 @@ const CargoFlowContext = createContext<CargoFlowContextType | undefined>(undefin
 export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
   const [currentRole, setCurrentRole] = useState<UserRole>('SUPER_ADMIN');
   const [currentProfile, setCurrentProfile] = useState<UserProfile>(DEMO_USER_PROFILES[0]);
+  const [currentCompany, setCurrentCompany] = useState<CourierCompany | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
+  const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(true);
+
   const [activeTab, setActiveTab] = useState<string>('fleet-map');
 
   const [stops] = useState<Stop[]>(INITIAL_STOPS);
@@ -70,24 +96,127 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
   const [buses] = useState<Bus[]>(INITIAL_BUSES);
   const [trips, setTrips] = useState<ScheduledTrip[]>(INITIAL_SCHEDULED_TRIPS);
   const [shipments, setShipments] = useState<Shipment[]>(INITIAL_SHIPMENTS);
-  const [courierCompanies] = useState<CourierCompany[]>(INITIAL_COURIER_COMPANIES);
+  const [courierCompanies, setCourierCompanies] = useState<CourierCompany[]>([]);
 
   const [isSimulating, setIsSimulating] = useState<boolean>(true);
   const [selectedTripId, setSelectedTripId] = useState<string | null>('TRP001');
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>('shp-1001');
 
-  // Switch role and update persona + sensible default activeTab
+  // Load session & companies on mount
+  useEffect(() => {
+    async function loadInitialData() {
+      setIsLoadingAuth(true);
+      try {
+        const session = await getCurrentAuthSession();
+        if (session) {
+          setCurrentProfile(session.user);
+          setCurrentRole(session.user.role);
+          setCurrentCompany(session.company || null);
+          setIsAuthenticated(true);
+        } else {
+          // Default to demo admin profile for initial guest state if not explicitly signed out
+          setCurrentProfile(DEMO_USER_PROFILES[0]);
+          setCurrentRole('SUPER_ADMIN');
+          setIsAuthenticated(true);
+        }
+
+        const companiesList = await fetchAllCourierCompanies();
+        setCourierCompanies(companiesList);
+      } catch (err) {
+        console.error('Error loading initial auth context:', err);
+      } finally {
+        setIsLoadingAuth(false);
+      }
+    }
+
+    loadInitialData();
+  }, []);
+
+  const refreshCompanies = async () => {
+    const list = await fetchAllCourierCompanies();
+    setCourierCompanies(list);
+  };
+
+  // Switch role function for quick demo testing
   const switchRole = (role: UserRole) => {
     setCurrentRole(role);
-    const profile = DEMO_USER_PROFILES.find(p => p.role === role) || DEMO_USER_PROFILES[0];
+    const profile = DEMO_USER_PROFILES.find((p) => p.role === role) || DEMO_USER_PROFILES[0];
     setCurrentProfile(profile);
 
     if (role === 'SUPER_ADMIN') {
       setActiveTab('fleet-map');
+      setCurrentCompany(null);
     } else if (role === 'COURIER_PARTNER') {
       setActiveTab('book-capacity');
+      const comp = courierCompanies.find((c) => c.id === profile.companyId) || courierCompanies[0] || null;
+      setCurrentCompany(comp);
     } else if (role === 'CONDUCTOR') {
       setActiveTab('today-trips');
+      setCurrentCompany(null);
+    }
+  };
+
+  const login = async (email: string, pass: string) => {
+    const res = await loginWithEmailPassword(email, pass);
+    if (res.session) {
+      setCurrentProfile(res.session.user);
+      setCurrentRole(res.session.user.role);
+      setCurrentCompany(res.session.company || null);
+      setIsAuthenticated(true);
+
+      if (res.session.user.role === 'SUPER_ADMIN') {
+        setActiveTab('fleet-map');
+      } else if (res.session.user.role === 'COURIER_PARTNER') {
+        setActiveTab('book-capacity');
+      } else if (res.session.user.role === 'CONDUCTOR') {
+        setActiveTab('today-trips');
+      }
+
+      await refreshCompanies();
+      return { success: true, session: res.session };
+    }
+    return { success: false, error: res.error || 'Login failed.' };
+  };
+
+  const registerCourier = async (input: CourierRegistrationInput) => {
+    const res = await registerCourierPartner(input);
+    if (res.session) {
+      setCurrentProfile(res.session.user);
+      setCurrentRole(res.session.user.role);
+      setCurrentCompany(res.session.company || null);
+      setIsAuthenticated(true);
+      await refreshCompanies();
+      return { success: true, session: res.session };
+    }
+    return { success: false, error: res.error || 'Registration failed.' };
+  };
+
+  const logout = async () => {
+    await signOutAuth();
+    setIsAuthenticated(false);
+    setCurrentCompany(null);
+    setCurrentRole('SUPER_ADMIN');
+    setCurrentProfile(DEMO_USER_PROFILES[0]);
+  };
+
+  const approveCompany = async (companyId: string) => {
+    await updateCourierCompanyStatus(companyId, 'ACTIVE');
+    await refreshCompanies();
+
+    // If current logged-in company matches, update current state
+    if (currentCompany && currentCompany.id === companyId) {
+      setCurrentCompany({ ...currentCompany, status: 'ACTIVE' });
+      setCurrentProfile({ ...currentProfile, companyStatus: 'ACTIVE' });
+    }
+  };
+
+  const rejectCompany = async (companyId: string, reason?: string) => {
+    await updateCourierCompanyStatus(companyId, 'REJECTED', reason);
+    await refreshCompanies();
+
+    if (currentCompany && currentCompany.id === companyId) {
+      setCurrentCompany({ ...currentCompany, status: 'REJECTED', rejectionReason: reason });
+      setCurrentProfile({ ...currentProfile, companyStatus: 'REJECTED' });
     }
   };
 
@@ -175,7 +304,7 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Realtime bus GPS jitter animation simulator to make the app feel alive
+  // Realtime bus GPS jitter animation simulator
   useEffect(() => {
     if (!isSimulating) return;
 
@@ -183,7 +312,6 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       setTrips(prevTrips =>
         prevTrips.map(trip => {
           if (trip.tripStatus === 'IN_TRANSIT' && trip.currentLocation) {
-            // Small subtle GPS coordinate interpolation
             const latDelta = (Math.random() - 0.48) * 0.0015;
             const lngDelta = (Math.random() - 0.48) * 0.0015;
             return {
@@ -215,9 +343,18 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       value={{
         currentRole,
         currentProfile,
+        currentCompany,
+        isAuthenticated,
+        isLoadingAuth,
         activeTab,
         setActiveTab,
         switchRole,
+        login,
+        registerCourier,
+        logout,
+        approveCompany,
+        rejectCompany,
+        refreshCompanies,
         stops,
         depots,
         routes,
@@ -236,7 +373,7 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
         totalRevenue,
         totalCapacityKg,
         utilizedCapacityKg,
-        networkUtilizationPercentage
+        networkUtilizationPercentage,
       }}
     >
       {children}

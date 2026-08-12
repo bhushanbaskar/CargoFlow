@@ -150,9 +150,87 @@ export const INITIAL_SCHEDULED_TRIPS: ScheduledTrip[] = [
 ];
 
 export const INITIAL_COURIER_COMPANIES: CourierCompany[] = [
-  { id: "c0000000-0000-0000-0000-000000000001", name: "BlueDart Express", code: "BLUEDART", contactEmail: "dispatch@bluedart.com", contactPhone: "+91 98230 11223", creditLimit: 250000, usedCredit: 34500 },
-  { id: "c0000000-0000-0000-0000-000000000002", name: "Delhivery Logistics", code: "DELHIVERY", contactEmail: "ops@delhivery.com", contactPhone: "+91 98190 44556", creditLimit: 200000, usedCredit: 18200 },
-  { id: "c0000000-0000-0000-0000-000000000003", name: "DTDC Express India", code: "DTDC", contactEmail: "support@dtdc.in", contactPhone: "+91 97650 77889", creditLimit: 150000, usedCredit: 9800 }
+  {
+    id: "c0000000-0000-0000-0000-000000000001",
+    name: "BlueDart Express",
+    legalName: "Blue Dart Express Limited",
+    code: "BLUEDART",
+    contactEmail: "dispatch@bluedart.com",
+    contactPhone: "+91 98230 11223",
+    creditLimit: 250000,
+    usedCredit: 34500,
+    address: "Plot 12, MIDC Ambad",
+    city: "Nashik",
+    state: "Maharashtra",
+    gstin: "27AAACB0000A1Z5",
+    status: "ACTIVE",
+    createdAt: "2026-08-01T10:00:00Z"
+  },
+  {
+    id: "c0000000-0000-0000-0000-000000000002",
+    name: "Delhivery Logistics",
+    legalName: "Delhivery Private Limited",
+    code: "DELHIVERY",
+    contactEmail: "ops@delhivery.com",
+    contactPhone: "+91 98190 44556",
+    creditLimit: 200000,
+    usedCredit: 18200,
+    address: "Block B, Hadapsar Industrial Estate",
+    city: "Pune",
+    state: "Maharashtra",
+    gstin: "27AAACD9999B1Z2",
+    status: "ACTIVE",
+    createdAt: "2026-08-05T11:30:00Z"
+  },
+  {
+    id: "c0000000-0000-0000-0000-000000000003",
+    name: "DTDC Express India",
+    legalName: "DTDC Express India Limited",
+    code: "DTDC",
+    contactEmail: "support@dtdc.in",
+    contactPhone: "+91 97650 77889",
+    creditLimit: 150000,
+    usedCredit: 9800,
+    address: "Station Road",
+    city: "Chhatrapati Sambhajinagar",
+    state: "Maharashtra",
+    gstin: "27AAACD1234C1Z9",
+    status: "ACTIVE",
+    createdAt: "2026-08-08T09:15:00Z"
+  },
+  {
+    id: "c0000000-0000-0000-0000-000000000004",
+    name: "SwiftLog Logistics",
+    legalName: "SwiftLog Parcel Services Pvt Ltd",
+    code: "SWIFTLOG",
+    contactEmail: "contact@swiftlog.in",
+    contactPhone: "+91 98221 55443",
+    creditLimit: 100000,
+    usedCredit: 0,
+    address: "7th Lane, Shivaji Nagar",
+    city: "Pune",
+    state: "Maharashtra",
+    gstin: "27AABCS8811P1Z4",
+    status: "PENDING",
+    createdAt: "2026-08-12T04:20:00Z"
+  },
+  {
+    id: "c0000000-0000-0000-0000-000000000005",
+    name: "Apex Couriers",
+    legalName: "Apex IntraCity Express",
+    code: "APEX",
+    contactEmail: "admin@apexcouriers.com",
+    contactPhone: "+91 97110 33221",
+    creditLimit: 50000,
+    usedCredit: 0,
+    address: "Transport Nagar",
+    city: "Nagpur",
+    state: "Maharashtra",
+    gstin: "27AABCA4433E1Z1",
+    status: "REJECTED",
+    rejectionReason: "Incomplete GST documentation provided.",
+    createdAt: "2026-08-10T14:10:00Z"
+  }
 ];
 
 export const DEMO_USER_PROFILES: UserProfile[] = [
@@ -170,7 +248,26 @@ export const DEMO_USER_PROFILES: UserProfile[] = [
     fullName: "Amit Deshmukh (BlueDart Logistics Lead)",
     role: "COURIER_PARTNER",
     companyId: "c0000000-0000-0000-0000-000000000001",
-    companyName: "BlueDart Express"
+    companyName: "BlueDart Express",
+    companyStatus: "ACTIVE"
+  },
+  {
+    id: "usr-courier-pending",
+    email: "contact@swiftlog.in",
+    fullName: "Priya Sharma (SwiftLog Operations Manager)",
+    role: "COURIER_PARTNER",
+    companyId: "c0000000-0000-0000-0000-000000000004",
+    companyName: "SwiftLog Logistics",
+    companyStatus: "PENDING"
+  },
+  {
+    id: "usr-courier-rejected",
+    email: "admin@apexcouriers.com",
+    fullName: "Vikram Mehta (Apex Transport Owner)",
+    role: "COURIER_PARTNER",
+    companyId: "c0000000-0000-0000-0000-000000000005",
+    companyName: "Apex Couriers",
+    companyStatus: "REJECTED"
   },
   {
     id: "usr-conductor-01",

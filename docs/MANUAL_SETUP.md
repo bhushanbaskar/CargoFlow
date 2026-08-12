@@ -1,46 +1,85 @@
-# CargoFlow - Manual Setup & Operations Guide
+# CargoFlow — Manual Setup Guide
 
-This document contains step-by-step instructions for deploying, configuring, and operating CargoFlow with Supabase and Google AI Studio Cloud Run.
-
----
-
-## 1. Supabase Project Setup
-1. Log into [Supabase Console](https://database.new) and create a new project named `cargoflow-msrtc`.
-2. Save your Database Password, API URL, `anon` key, and `service_role` key securely.
-3. Enable PostgreSQL extensions: `uuid-ossp` and `pgcrypto`.
+This document contains configuration, API key instructions, and deployment details for the **CargoFlow** B2B Cargo Reservation & Transport Platform.
 
 ---
 
-## 2. Environment Variables Configuration
-Declare the following environment variables in your workspace:
+## 1. Environment Variables
+
+CargoFlow operates out-of-the-box using built-in interactive SVG/CSS Maharashtra transit network map visualizations and simulated MSRTC timetables. No external API keys are required for standard local development or previewing.
+
+If you wish to configure optional Google Maps API integrations or backend authentication, create a `.env.local` file at the root of the project:
 
 ```env
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL="https://your-supabase-project.supabase.co"
-NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
-SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+# Optional: Google Maps JavaScript API key for custom tile overlays
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=
 
-# Application URL
-APP_URL="https://your-app-url.run.app"
+# Optional: Server-side Gemini API key for automated waybill route optimization
+GEMINI_API_KEY=
 ```
 
 ---
 
-## 3. Database Migration Execution
-1. Navigate to your Supabase project SQL Editor.
-2. Open and run `docs/schema.sql` to create all tables, indexes, triggers, and RLS policies.
-3. Open and run `docs/seed.sql` to populate MSRTC Nashik division network data (50 stops, 10 depots, 25 routes, 30 buses, and 60 scheduled trips).
+## 2. Google Maps API Configuration (Optional)
+
+If you decide to substitute the built-in SVG Maharashtra map with Google Maps Platform:
+
+1. Visit the [Google Cloud Console](https://console.cloud.google.com/).
+2. Enable the following APIs in your Google Cloud Project:
+   - **Maps JavaScript API**
+   - **Places API (New)**
+   - **Routes API**
+3. Generate an API key with HTTP referrer restrictions matching your production domain.
+4. Add the key to `.env.local` as `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`.
+5. Restart your development server (`npm run dev`).
 
 ---
 
-## 4. Initial User Roles Setup
-Pre-created demo credentials for testing:
-- **Super Admin (MSRTC Ops)**: `admin@msrtc.gov.in` / `CargoFlow2026!`
-- **Courier Partner (BlueDart Logistics)**: `dispatch@bluedart.com` / `CargoFlow2026!`
-- **Conductor (Nashik-Pune Route)**: `conductor.nashik@msrtc.gov.in` / `CargoFlow2026!`
+## 3. Local Development & Build Commands
+
+To run CargoFlow locally:
+
+```bash
+# Install dependencies
+npm install
+
+# Start local development server (runs on port 3000)
+npm run dev
+
+# Run code linter
+npm run lint
+
+# Build production bundle
+npm run build
+
+# Start production server
+npm run start
+```
 
 ---
 
-## 5. Deployment Verification
-1. Ensure `npm run build` passes cleanly without TypeScript or ESLint errors.
-2. Launch dev server on port 3000.
+## 4. Deployment to Production / Cloud Run
+
+CargoFlow is optimized for deployment on Google Cloud Run or Vercel.
+
+- **Port Configuration**: The application listens on port `3000`.
+- **Production Build**: `npm run build` generates static assets in `.next/`.
+- **Start Script**: `npm start` executes `next start`.
+
+---
+
+## 5. MSRTC Route Timetable Data Notes
+
+The current MVP database contains timetable data for:
+- **Nashik Division** (Nashik CBS, Sangamner, Sinnar)
+- **Pune Division** (Pune Swargate, Hadapsar)
+- **Mumbai Division** (Mumbai Central, Dadar, Panvel)
+- **Chhatrapati Sambhajinagar Division** (Central Bus Stand, Yeola, Vaijapur)
+- **Nagpur Division** (Nagpur Ganeshpeth, Amravati, Wardha)
+
+---
+
+## Manual Actions Required Summary
+
+- No immediate manual action is required to run or test CargoFlow.
+- If you deploy to custom domains or add live payment gateway webhooks, set the relevant credentials in your host environment settings.

@@ -1,5 +1,7 @@
 export type UserRole = 'SUPER_ADMIN' | 'COURIER_PARTNER' | 'CONDUCTOR';
 
+export type CompanyStatus = 'PENDING' | 'ACTIVE' | 'REJECTED';
+
 export interface Division {
   id: string;
   name: string;
@@ -88,22 +90,51 @@ export interface Shipment {
 export interface CourierCompany {
   id: string;
   name: string;
+  legalName: string;
   code: string;
   contactEmail: string;
   contactPhone: string;
   creditLimit: number;
   usedCredit: number;
+  address?: string;
+  city?: string;
+  state?: string;
+  gstin?: string;
+  status: CompanyStatus;
+  rejectionReason?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface UserProfile {
   id: string;
   email: string;
   fullName: string;
+  phone?: string;
   role: UserRole;
   companyId?: string;
   companyName?: string;
+  companyStatus?: CompanyStatus;
   depotId?: string;
   depotName?: string;
+}
+
+export interface CourierRegistrationInput {
+  legalName: string;
+  contactEmail: string;
+  contactPhone: string;
+  address: string;
+  city: string;
+  state: string;
+  gstin?: string;
+  fullName: string;
+  workEmail: string;
+  password: string;
+}
+
+export interface AuthSession {
+  user: UserProfile;
+  company?: CourierCompany;
 }
 
 export interface MatchOption {
@@ -117,3 +148,4 @@ export interface MatchOption {
   pathStops: Stop[];
   reason: string;
 }
+

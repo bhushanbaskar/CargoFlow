@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 /* Custom Leaflet overrides for sleek map aesthetic */
 .leaflet-container {
@@ -33,4 +34,3 @@
 .leaflet-popup-tip {
   background: white !important;
 }
-

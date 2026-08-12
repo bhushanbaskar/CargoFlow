@@ -2,7 +2,13 @@
 
 import React, { useEffect, useRef } from 'react';
 import { ScheduledTrip, Bus, Route, Stop } from '@/lib/types';
-import L from 'leaflet';
+import type LType from 'leaflet';
+
+// Dynamically reference Leaflet on client side only to avoid SSR window errors
+let Leaflet: typeof LType | null = null;
+if (typeof window !== 'undefined') {
+  Leaflet = require('leaflet');
+}
 
 interface LeafletFleetMapProps {
   trips: ScheduledTrip[];
@@ -22,9 +28,9 @@ export default function LeafletFleetMap({
   onSelectTrip
 }: LeafletFleetMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
-  const markersRef = useRef<{ [key: string]: L.Marker }>({});
-  const polylineGroupRef = useRef<L.LayerGroup | null>(null);
+  const mapInstanceRef = useRef<LType.Map | null>(null);
+  const markersRef = useRef<{ [key: string]: LType.Marker }>({});
+  const polylineGroupRef = useRef<LType.LayerGroup | null>(null);
 
   const busesMap = useRef(new Map(buses.map(b => [b.id, b])));
   const routesMap = useRef(new Map(routes.map(r => [r.id, r])));
@@ -38,11 +44,11 @@ export default function LeafletFleetMap({
 
   // Initialize Leaflet Map
   useEffect(() => {
-    if (!mapContainerRef.current) return;
+    if (!mapContainerRef.current || !Leaflet) return;
     if (mapInstanceRef.current) return; // already initialized
 
     // Center on Nashik Division coordinates
-    const map = L.map(mapContainerRef.current, {
+    const map = Leaflet.map(mapContainerRef.current, {
       center: [19.8500, 73.8800],
       zoom: 9,
       zoomControl: false,
@@ -50,15 +56,15 @@ export default function LeafletFleetMap({
     });
 
     // Add CartoDB Positron Light Tiles (Clean, elegant greyscale style matching image 2)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    Leaflet.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
       subdomains: 'abcd',
     }).addTo(map);
 
     // Custom Zoom Control at bottom right
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    Leaflet.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    polylineGroupRef.current = L.layerGroup().addTo(map);
+    polylineGroupRef.current = Leaflet.layerGroup().addTo(map);
     mapInstanceRef.current = map;
 
     return () => {
@@ -72,7 +78,7 @@ export default function LeafletFleetMap({
   // Render Routes (Polylines) & Terminal Pins
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map || !polylineGroupRef.current) return;
+    if (!map || !polylineGroupRef.current || !Leaflet) return;
 
     polylineGroupRef.current.clearLayers();
 
@@ -84,7 +90,7 @@ export default function LeafletFleetMap({
       const isSource = activeRoute?.sourceStopId === stop.id;
       const isDest = activeRoute?.destinationStopId === stop.id;
 
-      const stopIcon = L.divIcon({
+      const stopIcon = Leaflet!.divIcon({
         className: 'custom-stop-pin',
         html: `
           <div class="relative group cursor-pointer">
@@ -104,7 +110,7 @@ export default function LeafletFleetMap({
         iconAnchor: [7, 7]
       });
 
-      const marker = L.marker([stop.latitude, stop.longitude], { icon: stopIcon });
+      const marker = Leaflet!.marker([stop.latitude, stop.longitude], { icon: stopIcon });
       marker.addTo(polylineGroupRef.current!);
     });
 
@@ -117,7 +123,7 @@ export default function LeafletFleetMap({
       const activeTrip = trips.find(t => t.id === selectedTripId);
       const isSelectedRoute = activeTrip?.routeId === route.id;
 
-      const linePoints: L.LatLngExpression[] = [
+      const linePoints: LType.LatLngExpression[] = [
         [srcStop.latitude, srcStop.longitude]
       ];
 
@@ -131,7 +137,7 @@ export default function LeafletFleetMap({
 
       linePoints.push([destStop.latitude, destStop.longitude]);
 
-      const polyline = L.polyline(linePoints, {
+      const polyline = Leaflet!.polyline(linePoints, {
         color: isSelectedRoute ? '#000000' : '#94a3b8',
         weight: isSelectedRoute ? 4 : 2,
         dashArray: isSelectedRoute ? '8, 6' : '3, 6',
@@ -145,7 +151,7 @@ export default function LeafletFleetMap({
   // Render & Update Live Vehicle Bus Markers
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map) return;
+    if (!map || !Leaflet) return;
 
     trips.forEach(trip => {
       if (!trip.currentLocation) return;
@@ -154,10 +160,6 @@ export default function LeafletFleetMap({
 
       const lat = trip.currentLocation.latitude;
       const lng = trip.currentLocation.longitude;
-
-      const utilizationPct = Math.round(
-        ((trip.totalCargoCapacityKg - trip.availableCargoCapacityKg) / trip.totalCargoCapacityKg) * 100
-      );
 
       const html = `
         <div class="relative cursor-pointer transition-transform duration-200 ${isSelected ? 'scale-110 z-30' : 'hover:scale-105 z-20'}">
@@ -173,7 +175,7 @@ export default function LeafletFleetMap({
         </div>
       `;
 
-      const vehicleIcon = L.divIcon({
+      const vehicleIcon = Leaflet!.divIcon({
         className: 'custom-vehicle-marker',
         html,
         iconSize: [120, 36],
@@ -184,7 +186,7 @@ export default function LeafletFleetMap({
         markersRef.current[trip.id].setLatLng([lat, lng]);
         markersRef.current[trip.id].setIcon(vehicleIcon);
       } else {
-        const marker = L.marker([lat, lng], { icon: vehicleIcon });
+        const marker = Leaflet!.marker([lat, lng], { icon: vehicleIcon });
         marker.on('click', () => {
           onSelectTrip(trip.id);
         });
