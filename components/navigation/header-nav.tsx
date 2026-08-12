@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useCargoFlow } from '@/components/context/cargoflow-context';
 import { UserRole } from '@/lib/types';
 import {
@@ -21,6 +21,7 @@ import {
 
 export function HeaderNav() {
   const router = useRouter();
+  const pathname = usePathname();
   const {
     currentRole,
     currentProfile,
@@ -100,8 +101,13 @@ export function HeaderNav() {
                   key={tab.id}
                   onClick={() => {
                     setActiveTab(tab.id);
-                    if (tab.id === 'admin-partners') {
-                      router.push('/admin/partners');
+                    
+                    if (currentRole === 'SUPER_ADMIN' && pathname && !pathname.startsWith('/admin/dashboard')) {
+                      router.push('/admin/dashboard');
+                    } else if (currentRole === 'COURIER_PARTNER' && pathname && !pathname.startsWith('/partner/dashboard')) {
+                      router.push('/partner/dashboard');
+                    } else if (currentRole === 'CONDUCTOR' && pathname && !pathname.startsWith('/conductor/dashboard')) {
+                      router.push('/conductor/dashboard');
                     }
                   }}
                   className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
@@ -268,8 +274,13 @@ export function HeaderNav() {
               key={tab.id}
               onClick={() => {
                 setActiveTab(tab.id);
-                if (tab.id === 'admin-partners') {
-                  router.push('/admin/partners');
+                
+                if (currentRole === 'SUPER_ADMIN' && pathname && !pathname.startsWith('/admin/dashboard')) {
+                  router.push('/admin/dashboard');
+                } else if (currentRole === 'COURIER_PARTNER' && pathname && !pathname.startsWith('/partner/dashboard')) {
+                  router.push('/partner/dashboard');
+                } else if (currentRole === 'CONDUCTOR' && pathname && !pathname.startsWith('/conductor/dashboard')) {
+                  router.push('/conductor/dashboard');
                 }
               }}
               className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
