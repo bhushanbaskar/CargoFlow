@@ -8,15 +8,12 @@ import {
   Bus,
   TrendingUp,
   Settings,
-  Search,
-  Bell,
   ArrowRight,
-  Shield,
   Gauge,
   Sparkles,
-  Layers,
-  Clock
+  Layers
 } from 'lucide-react';
+import { motion } from 'motion/react';
 
 interface DashboardPreviewProps {
   onLaunchApp: () => void;
@@ -30,9 +27,15 @@ export function DashboardPreview({ onLaunchApp }: DashboardPreviewProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
         
         {/* Section Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.4 }}
+          className="flex flex-col md:flex-row md:items-end justify-between gap-6"
+        >
           <div className="space-y-3 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-100 text-zinc-900 text-xs font-bold uppercase tracking-wider">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-zinc-100 text-zinc-900 text-xs font-bold uppercase tracking-wider">
               <span>PRODUCT INTERFACE</span>
             </div>
             <h2 className="text-3xl sm:text-5xl font-black text-zinc-950 tracking-tight">
@@ -45,15 +48,21 @@ export function DashboardPreview({ onLaunchApp }: DashboardPreviewProps) {
 
           <button
             onClick={onLaunchApp}
-            className="px-6 py-3.5 rounded-full bg-zinc-950 hover:bg-zinc-800 text-white font-extrabold text-sm transition-all shadow-md flex items-center gap-2 shrink-0 group"
+            className="px-6 py-3.5 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white font-extrabold text-sm transition-all shadow-md flex items-center gap-2 shrink-0 group cursor-pointer"
           >
             <span>Launch Live Platform</span>
             <ArrowRight className="w-4 h-4 text-lime-300 transition-transform group-hover:translate-x-1" />
           </button>
-        </div>
+        </motion.div>
 
         {/* Browser Mockup Frame Container */}
-        <div className="bg-white rounded-3xl border border-zinc-300/80 shadow-2xl overflow-hidden">
+        <motion.div
+          initial={{ opacity: 0, y: 25 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+          className="bg-white rounded-xl border border-zinc-300/80 shadow-2xl overflow-hidden"
+        >
           
           {/* Top Browser Bar */}
           <div className="bg-zinc-100/90 px-4 py-3 border-b border-zinc-200/80 flex items-center justify-between">
@@ -67,7 +76,7 @@ export function DashboardPreview({ onLaunchApp }: DashboardPreviewProps) {
             </div>
 
             <div className="flex items-center gap-3">
-              <span className="px-2.5 py-0.5 rounded-full bg-zinc-200 text-zinc-800 text-[10px] font-bold font-mono">
+              <span className="px-2.5 py-0.5 rounded-md bg-zinc-200 text-zinc-800 text-[10px] font-bold font-mono">
                 MSRTC SAAS CONTROL
               </span>
             </div>
@@ -99,7 +108,7 @@ export function DashboardPreview({ onLaunchApp }: DashboardPreviewProps) {
                     <button
                       key={item.name}
                       onClick={() => setActiveTabPreview(item.name)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
                         isActive
                           ? 'bg-zinc-800 text-white border border-zinc-700'
                           : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
@@ -136,7 +145,7 @@ export function DashboardPreview({ onLaunchApp }: DashboardPreviewProps) {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="px-3 py-1 rounded-full bg-[#d9f99d] text-zinc-950 font-extrabold text-xs">
+                  <span className="px-3 py-1 rounded-md bg-[#d9f99d] text-zinc-950 font-extrabold text-xs">
                     GPS Live Sync
                   </span>
                 </div>
@@ -144,7 +153,7 @@ export function DashboardPreview({ onLaunchApp }: DashboardPreviewProps) {
 
               {/* 4 Floating KPI Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-white p-4 rounded-2xl border border-zinc-200/90 shadow-2xs space-y-1">
+                <div className="bg-white p-4 rounded-lg border border-zinc-200/90 shadow-2xs space-y-1">
                   <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                     Available Hold
                   </div>
@@ -152,7 +161,7 @@ export function DashboardPreview({ onLaunchApp }: DashboardPreviewProps) {
                   <div className="text-[10px] text-emerald-600 font-bold">Unreserved free capacity</div>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-zinc-200/90 shadow-2xs space-y-1">
+                <div className="bg-white p-4 rounded-lg border border-zinc-200/90 shadow-2xs space-y-1">
                   <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                     In Transit
                   </div>
@@ -160,7 +169,7 @@ export function DashboardPreview({ onLaunchApp }: DashboardPreviewProps) {
                   <div className="text-[10px] text-zinc-500 font-medium">Across 5 active buses</div>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-zinc-200/90 shadow-2xs space-y-1">
+                <div className="bg-white p-4 rounded-lg border border-zinc-200/90 shadow-2xs space-y-1">
                   <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                     Active Routes
                   </div>
@@ -168,7 +177,7 @@ export function DashboardPreview({ onLaunchApp }: DashboardPreviewProps) {
                   <div className="text-[10px] text-purple-600 font-bold">Maharashtra regional</div>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-zinc-200/90 shadow-2xs space-y-1">
+                <div className="bg-white p-4 rounded-lg border border-zinc-200/90 shadow-2xs space-y-1">
                   <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                     Projected Revenue
                   </div>
@@ -178,7 +187,7 @@ export function DashboardPreview({ onLaunchApp }: DashboardPreviewProps) {
               </div>
 
               {/* Sample Dispatch Table inside Dashboard Mockup */}
-              <div className="bg-white rounded-2xl border border-zinc-200/90 shadow-2xs p-4 space-y-3">
+              <div className="bg-white rounded-lg border border-zinc-200/90 shadow-2xs p-4 space-y-3">
                 <div className="flex items-center justify-between text-xs font-bold text-zinc-900 border-b border-zinc-100 pb-2">
                   <span>Active Scheduled Bus Departures</span>
                   <span className="text-zinc-400 font-mono text-[11px]">Demo Data</span>
@@ -190,7 +199,7 @@ export function DashboardPreview({ onLaunchApp }: DashboardPreviewProps) {
                     { bus: 'MH-12-RN-8819', route: 'Mumbai Central → Pune Swargate', departure: '09:00 AM', free: '112 kg', status: 'IN TRANSIT' },
                     { bus: 'MH-20-BV-3310', route: 'Ch. Sambhajinagar → Nashik', departure: '10:15 AM', free: '45 kg', status: 'SCHEDULED' }
                   ].map((row) => (
-                    <div key={row.bus} className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50 border border-zinc-200/60">
+                    <div key={row.bus} className="flex items-center justify-between p-2.5 rounded-lg bg-zinc-50 border border-zinc-200/60">
                       <div className="flex items-center gap-3">
                         <span className="font-mono font-bold bg-white px-2 py-0.5 rounded border border-zinc-200 text-zinc-900">
                           {row.bus}
@@ -200,7 +209,7 @@ export function DashboardPreview({ onLaunchApp }: DashboardPreviewProps) {
                       <div className="flex items-center gap-4 font-mono text-[11px]">
                         <span>Dep: {row.departure}</span>
                         <span className="text-lime-700 font-bold">Hold Free: {row.free}</span>
-                        <span className="px-2 py-0.5 rounded-full bg-zinc-950 text-white text-[10px] font-bold">
+                        <span className="px-2 py-0.5 rounded-md bg-zinc-950 text-white text-[10px] font-bold">
                           {row.status}
                         </span>
                       </div>
@@ -224,16 +233,17 @@ export function DashboardPreview({ onLaunchApp }: DashboardPreviewProps) {
 
             <button
               onClick={onLaunchApp}
-              className="px-5 py-2 rounded-full bg-[#d9f99d] hover:bg-lime-300 text-zinc-950 font-extrabold text-xs transition-colors shrink-0 flex items-center gap-2"
+              className="px-5 py-2 rounded-lg bg-[#d9f99d] hover:bg-lime-300 text-zinc-950 font-extrabold text-xs transition-colors shrink-0 flex items-center gap-2 cursor-pointer"
             >
               <span>Interact with Full App</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
 
-        </div>
+        </motion.div>
 
       </div>
     </section>
   );
 }
+

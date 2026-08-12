@@ -159,7 +159,7 @@ export function HeaderNav() {
             </button>
 
             {roleMenuOpen && (
-              <div className="absolute right-0 mt-2 w-80 bg-white rounded-3xl shadow-xl border border-zinc-200 p-3 z-50 animate-in fade-in space-y-2">
+              <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-zinc-200 p-3 z-50 animate-in fade-in space-y-2">
                 <div className="px-2 py-1.5 text-[10px] font-bold tracking-wider text-zinc-400 uppercase border-b border-zinc-100 flex items-center justify-between">
                   <span>CURRENT AUTH SESSION</span>
                   <span className="text-zinc-900 font-mono">{currentRole}</span>
@@ -185,7 +185,7 @@ export function HeaderNav() {
                     setRoleMenuOpen(false);
                     router.push('/admin/dashboard');
                   }}
-                  className={`w-full text-left p-2.5 rounded-2xl text-xs flex items-center gap-2.5 transition-colors ${
+                  className={`w-full text-left p-2.5 rounded-lg text-xs flex items-center gap-2.5 transition-colors ${
                     currentRole === 'SUPER_ADMIN'
                       ? 'bg-zinc-900 text-white font-medium'
                       : 'hover:bg-zinc-100 text-zinc-800'
@@ -204,7 +204,7 @@ export function HeaderNav() {
                     setRoleMenuOpen(false);
                     router.push('/partner/dashboard');
                   }}
-                  className={`w-full text-left p-2.5 rounded-2xl text-xs flex items-center gap-2.5 transition-colors ${
+                  className={`w-full text-left p-2.5 rounded-lg text-xs flex items-center gap-2.5 transition-colors ${
                     currentRole === 'COURIER_PARTNER'
                       ? 'bg-zinc-900 text-white font-medium'
                       : 'hover:bg-zinc-100 text-zinc-800'
@@ -223,7 +223,7 @@ export function HeaderNav() {
                     setRoleMenuOpen(false);
                     router.push('/conductor/dashboard');
                   }}
-                  className={`w-full text-left p-2.5 rounded-2xl text-xs flex items-center gap-2.5 transition-colors ${
+                  className={`w-full text-left p-2.5 rounded-lg text-xs flex items-center gap-2.5 transition-colors ${
                     currentRole === 'CONDUCTOR'
                       ? 'bg-zinc-900 text-white font-medium'
                       : 'hover:bg-zinc-100 text-zinc-800'

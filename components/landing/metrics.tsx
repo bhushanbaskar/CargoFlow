@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { motion } from 'motion/react';
 
 export function Metrics() {
   const metricsList = [
@@ -31,7 +32,13 @@ export function Metrics() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Metric Cards Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 lg:gap-8 divide-y md:divide-y-0 md:divide-x divide-zinc-100">
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.4 }}
+          className="grid grid-cols-2 md:grid-cols-4 gap-6 lg:gap-8 divide-y md:divide-y-0 md:divide-x divide-zinc-100"
+        >
           {metricsList.map((metric, idx) => (
             <div
               key={metric.label}
@@ -48,7 +55,7 @@ export function Metrics() {
               </div>
             </div>
           ))}
-        </div>
+        </motion.div>
 
         {/* Mandatory Transparency Note */}
         <div className="mt-6 pt-4 border-t border-zinc-100 flex items-center justify-between text-[11px] text-zinc-400 font-mono">
@@ -60,3 +67,4 @@ export function Metrics() {
     </section>
   );
 }
+

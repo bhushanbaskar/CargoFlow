@@ -1,19 +1,36 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@theme {
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* Global scrollbar hiding for desktop & mobile */
+::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+html, body, * {
+  -ms-overflow-style: none !important; /* IE and Edge */
+  scrollbar-width: none !important; /* Firefox */
+}
+
 /* Custom Leaflet overrides for sleek map aesthetic */
 .leaflet-container {
   width: 100%;
   height: 100%;
   background-color: #e5e7eb !important;
-  font-family: inherit;
+  font-family: var(--font-geist-sans), sans-serif;
   z-index: 1;
 }
 
 .leaflet-control-zoom {
   border: none !important;
   box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1) !important;
-  border-radius: 9999px !important;
+  border-radius: 0.75rem !important;
   overflow: hidden;
 }
 
@@ -26,7 +43,7 @@
 }
 
 .leaflet-popup-content-wrapper {
-  border-radius: 1rem !important;
+  border-radius: 0.75rem !important;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
   padding: 4px !important;
 }
@@ -34,3 +51,4 @@
 .leaflet-popup-tip {
   background: white !important;
 }
+

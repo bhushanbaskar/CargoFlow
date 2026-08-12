@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Package, Search, Bus, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Package, Search, Bus, CheckCircle2 } from 'lucide-react';
+import { motion } from 'motion/react';
 
 export function HowItWorks() {
   const [activeStep, setActiveStep] = useState<number>(1);
@@ -46,8 +47,14 @@ export function HowItWorks() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-16">
         
         {/* Section Header */}
-        <div className="max-w-3xl space-y-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-100 text-zinc-900 text-xs font-bold uppercase tracking-wider">
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.4 }}
+          className="max-w-3xl space-y-4"
+        >
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-zinc-100 text-zinc-900 text-xs font-bold uppercase tracking-wider">
             <span>DETERMINISTIC WORKFLOW</span>
           </div>
           <h2 className="text-3xl sm:text-5xl font-black text-zinc-950 tracking-tight leading-tight">
@@ -56,7 +63,7 @@ export function HowItWorks() {
           <p className="text-base sm:text-lg text-zinc-600 font-medium">
             Four seamless steps connecting courier parcels with verified public bus luggage hold capacity.
           </p>
-        </div>
+        </motion.div>
 
         {/* 4-Step Horizontal Timeline Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative">
@@ -69,10 +76,14 @@ export function HowItWorks() {
             const isSelected = activeStep === idx + 1;
 
             return (
-              <div
+              <motion.div
                 key={step.num}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.35, delay: idx * 0.1 }}
                 onClick={() => setActiveStep(idx + 1)}
-                className={`bg-white rounded-3xl p-6 border transition-all duration-200 cursor-pointer relative z-10 flex flex-col justify-between space-y-6 ${
+                className={`bg-white rounded-xl p-6 border transition-all duration-200 cursor-pointer relative z-10 flex flex-col justify-between space-y-6 ${
                   isSelected
                     ? 'border-zinc-950 shadow-xl ring-2 ring-zinc-950/10 bg-zinc-50/50'
                     : 'border-zinc-200/80 hover:border-zinc-400 hover:bg-zinc-50/30'
@@ -85,7 +96,7 @@ export function HowItWorks() {
                       {step.num}
                     </span>
                     <div
-                      className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-colors ${
+                      className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
                         isSelected
                           ? 'bg-zinc-950 text-lime-300'
                           : 'bg-zinc-100 text-zinc-700'
@@ -120,7 +131,7 @@ export function HowItWorks() {
                     </div>
                   ))}
                 </div>
-              </div>
+              </motion.div>
             );
           })}
         </div>
@@ -129,3 +140,4 @@ export function HowItWorks() {
     </section>
   );
 }
+

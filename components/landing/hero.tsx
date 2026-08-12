@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { HeroMapVisualization } from './hero-map';
-import { ArrowRight, LayoutDashboard, Sparkles, CheckCircle2, Shield } from 'lucide-react';
+import { ArrowRight, LayoutDashboard, Shield } from 'lucide-react';
+import { motion } from 'motion/react';
 
 interface HeroProps {
   onRequestAccess: () => void;
@@ -27,10 +28,15 @@ export function Hero({ onRequestAccess, onLaunchApp }: HeroProps) {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
           
           {/* Left Column: Typography & Narrative CTAs */}
-          <div className="lg:col-span-6 space-y-6 sm:space-y-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
+            className="lg:col-span-6 space-y-6 sm:space-y-8"
+          >
             
             {/* Small Eyebrow Badge */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-zinc-100 border border-zinc-200/90 text-zinc-900 text-xs font-bold tracking-widest uppercase">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-zinc-100 border border-zinc-200/90 text-zinc-900 text-xs font-bold tracking-widest uppercase">
               <span className="w-2 h-2 rounded-full bg-zinc-950" />
               <span>THE LOGISTICS NETWORK ALREADY EXISTS</span>
             </div>
@@ -50,7 +56,7 @@ export function Hero({ onRequestAccess, onLaunchApp }: HeroProps) {
               {/* Primary CTA */}
               <button
                 onClick={onRequestAccess}
-                className="px-6 py-3.5 rounded-full bg-zinc-950 hover:bg-zinc-800 text-white font-extrabold text-sm transition-all shadow-md hover:shadow-lg flex items-center gap-2 group"
+                className="px-6 py-3.5 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white font-extrabold text-sm transition-all shadow-md hover:shadow-lg flex items-center gap-2 group cursor-pointer"
               >
                 <span>Request Access</span>
                 <ArrowRight className="w-4 h-4 text-lime-300 transition-transform group-hover:translate-x-1" />
@@ -59,7 +65,7 @@ export function Hero({ onRequestAccess, onLaunchApp }: HeroProps) {
               {/* Secondary CTA */}
               <button
                 onClick={() => scrollToSection('network')}
-                className="px-6 py-3.5 rounded-full bg-white hover:bg-zinc-100 text-zinc-900 border border-zinc-200/90 font-bold text-sm transition-all shadow-2xs"
+                className="px-6 py-3.5 rounded-lg bg-white hover:bg-zinc-100 text-zinc-900 border border-zinc-200/90 font-bold text-sm transition-all shadow-2xs cursor-pointer"
               >
                 Explore the Network
               </button>
@@ -67,7 +73,7 @@ export function Hero({ onRequestAccess, onLaunchApp }: HeroProps) {
               {/* Live App Launcher CTA */}
               <button
                 onClick={onLaunchApp}
-                className="px-5 py-3.5 rounded-full bg-zinc-100 hover:bg-zinc-200/80 text-zinc-950 font-extrabold text-xs transition-all border border-zinc-200/80 flex items-center gap-2"
+                className="px-5 py-3.5 rounded-lg bg-zinc-100 hover:bg-zinc-200/80 text-zinc-950 font-extrabold text-xs transition-all border border-zinc-200/80 flex items-center gap-2 cursor-pointer"
               >
                 <LayoutDashboard className="w-4 h-4 text-zinc-700" />
                 <span>Launch SaaS App</span>
@@ -90,22 +96,28 @@ export function Hero({ onRequestAccess, onLaunchApp }: HeroProps) {
               ].map((tag) => (
                 <span
                   key={tag}
-                  className="px-3 py-1 rounded-full text-[11px] font-bold bg-white text-zinc-700 border border-zinc-200/80 shadow-2xs"
+                  className="px-3 py-1 rounded-md text-[11px] font-bold bg-white text-zinc-700 border border-zinc-200/80 shadow-2xs"
                 >
                   ✓ {tag}
                 </span>
               ))}
             </div>
 
-          </div>
+          </motion.div>
 
           {/* Right Column: Hero Interactive Map Visual */}
-          <div className="lg:col-span-6 w-full">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, delay: 0.15, ease: 'easeOut' }}
+            className="lg:col-span-6 w-full"
+          >
             <HeroMapVisualization />
-          </div>
+          </motion.div>
 
         </div>
       </div>
     </section>
   );
 }
+
