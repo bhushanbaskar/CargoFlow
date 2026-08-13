@@ -121,7 +121,7 @@ export function HeroMapVisualization() {
           <span className="text-xs font-mono font-bold text-zinc-200 uppercase tracking-widest">
             MAHARASHTRA REGIONAL CORRIDORS
           </span>
-          <span className="px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-700 text-[10px] text-zinc-400 font-mono">
+          <span className="w-[170px] px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-700 text-[10px] text-zinc-400 font-mono">
             MSRTC TIMETABLE DATA
           </span>
         </div>
