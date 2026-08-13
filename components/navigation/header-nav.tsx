@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useCargoFlow } from '@/components/context/cargoflow-context';
+import { CargoFlowLogo } from '@/components/landing/logo';
 import { UserRole } from '@/lib/types';
 import {
   Bus,
@@ -77,19 +78,9 @@ export function HeaderNav() {
         <div className="flex items-center gap-6">
           <Link
             href="/"
-            className="flex items-center gap-2.5 cursor-pointer hover:opacity-90 transition-opacity"
+            className="flex items-center cursor-pointer hover:opacity-90 transition-opacity"
           >
-            <div className="w-8 h-8 rounded-xl bg-black text-white flex items-center justify-center font-extrabold text-lg shadow-xs">
-              <Bus className="w-4 h-4 text-white" />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-black text-zinc-900 text-base tracking-tight font-sans">
-                CargoFlow
-              </span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#d9f99d] text-slate-900 border border-lime-300">
-                MSRTC
-              </span>
-            </div>
+            <CargoFlowLogo size="sm" badge="MSRTC" />
           </Link>
 
           {/* Nav Tabs */}
