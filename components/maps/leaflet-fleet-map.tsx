@@ -56,10 +56,10 @@ export default function LeafletFleetMap({
       attributionControl: false
     });
 
-    // Add CartoDB Positron Light Tiles (Clean, elegant greyscale style matching image 2)
-    Leaflet.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    // Add standard OpenStreetMap tiles (Free, no API key required)
+    Leaflet.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      subdomains: 'abcd',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
     }).addTo(map);
 
     // Custom Zoom Control at bottom right
