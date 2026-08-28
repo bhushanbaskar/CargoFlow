@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import { ScheduledTrip, Bus, Route, Stop } from '@/lib/types';
 import type LType from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 // Dynamically reference Leaflet on client side only to avoid SSR window errors
 let Leaflet: typeof LType | null = null;
