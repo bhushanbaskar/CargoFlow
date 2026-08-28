@@ -229,7 +229,7 @@ export function ShipmentsView({ isMasterLedger = false }: { isMasterLedger?: boo
                       <div className="w-2.5 h-2.5 rounded-full bg-blue-600 absolute -left-[5px] top-1 ring-4 ring-white" />
                       <div className="flex items-center justify-between text-xs">
                         <strong className="text-slate-900 font-bold">{item.status}</strong>
-                        <span className="text-[10px] font-mono text-slate-400">
+                        <span suppressHydrationWarning className="text-[10px] font-mono text-slate-400">
                           {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>

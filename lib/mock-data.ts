@@ -298,11 +298,11 @@ export const INITIAL_SHIPMENTS: Shipment[] = [
     qrCodeHash: "CF-QR-891-MH15BD1021",
     tripId: "TRP001",
     fareAmount: 450,
-    createdAt: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+    createdAt: "2026-08-27T10:00:00.000Z",
     statusHistory: [
-      { status: "RESERVED", timestamp: new Date(Date.now() - 4 * 3600 * 1000).toISOString(), location: "Nashik CBS Office", remarks: "Capacity reserved on TRP001" },
-      { status: "LOADED", timestamp: new Date(Date.now() - 2.5 * 3600 * 1000).toISOString(), location: "Nashik CBS Depot Bay 4", remarks: "Scanned by Conductor Suresh Pawar" },
-      { status: "IN_TRANSIT", timestamp: new Date(Date.now() - 1 * 3600 * 1000).toISOString(), location: "En-Route (Near Sangamner)", remarks: "Bus MH-15-BD-1021 in transit" }
+      { status: "RESERVED", timestamp: "2026-08-27T09:00:00.000Z", location: "Nashik CBS Office", remarks: "Capacity reserved on TRP001" },
+      { status: "LOADED", timestamp: "2026-08-27T10:30:00.000Z", location: "Nashik CBS Depot Bay 4", remarks: "Scanned by Conductor Suresh Pawar" },
+      { status: "IN_TRANSIT", timestamp: "2026-08-27T12:00:00.000Z", location: "En-Route (Near Sangamner)", remarks: "Bus MH-15-BD-1021 in transit" }
     ]
   },
   {
@@ -323,10 +323,10 @@ export const INITIAL_SHIPMENTS: Shipment[] = [
     qrCodeHash: "CF-QR-412-MH15SH4421",
     tripId: "TRP003",
     fareAmount: 780,
-    createdAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+    createdAt: "2026-08-27T11:00:00.000Z",
     statusHistory: [
-      { status: "RESERVED", timestamp: new Date(Date.now() - 3 * 3600 * 1000).toISOString(), location: "Nashik Mela Counter", remarks: "Capacity reserved on TRP003" },
-      { status: "LOADED", timestamp: new Date(Date.now() - 0.5 * 3600 * 1000).toISOString(), location: "Nashik Mela Bus Stand", remarks: "Verified & loaded into E-Shivai hold" }
+      { status: "RESERVED", timestamp: "2026-08-27T10:00:00.000Z", location: "Nashik Mela Counter", remarks: "Capacity reserved on TRP003" },
+      { status: "LOADED", timestamp: "2026-08-27T12:30:00.000Z", location: "Nashik Mela Bus Stand", remarks: "Verified & loaded into E-Shivai hold" }
     ]
   },
   {
@@ -347,9 +347,9 @@ export const INITIAL_SHIPMENTS: Shipment[] = [
     qrCodeHash: "CF-QR-734-MH15BG5512",
     tripId: "TRP005",
     fareAmount: 220,
-    createdAt: new Date(Date.now() - 1 * 3600 * 1000).toISOString(),
+    createdAt: "2026-08-27T12:00:00.000Z",
     statusHistory: [
-      { status: "RESERVED", timestamp: new Date(Date.now() - 1 * 3600 * 1000).toISOString(), location: "Mahamarg Nashik Depot", remarks: "Awaiting departure at 08:00 AM" }
+      { status: "RESERVED", timestamp: "2026-08-27T12:00:00.000Z", location: "Mahamarg Nashik Depot", remarks: "Awaiting departure at 08:00 AM" }
     ]
   }
 ];

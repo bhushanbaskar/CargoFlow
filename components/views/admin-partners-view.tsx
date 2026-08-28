@@ -189,7 +189,7 @@ export function AdminPartnersView() {
                       </span>
 
                       {company.createdAt && (
-                        <span className="text-xs text-zinc-400 font-mono">
+                        <span suppressHydrationWarning className="text-xs text-zinc-400 font-mono">
                           Applied: {new Date(company.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                         </span>
                       )}

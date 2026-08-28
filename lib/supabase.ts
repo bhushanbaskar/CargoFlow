@@ -12,9 +12,9 @@ export const isSupabaseConfigured = Boolean(
 
 let supabaseInstance: SupabaseClient | null = null;
 
-export function getSupabase(): SupabaseClient | null {
+export function getSupabase(): SupabaseClient {
   if (!isSupabaseConfigured) {
-    return null;
+    throw new Error('Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.');
   }
 
   if (!supabaseInstance) {
