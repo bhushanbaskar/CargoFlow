@@ -81,11 +81,20 @@ CREATE TABLE IF NOT EXISTS buses (
 CREATE TABLE IF NOT EXISTS courier_companies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
+    legal_name TEXT,
     code TEXT NOT NULL UNIQUE,
     contact_email TEXT,
     contact_phone TEXT,
+    address TEXT,
+    city TEXT,
+    state TEXT DEFAULT 'Maharashtra',
+    gstin TEXT,
+    status TEXT NOT NULL DEFAULT 'PENDING', -- PENDING, ACTIVE, REJECTED
     credit_limit NUMERIC(12,2) NOT NULL DEFAULT 100000.00,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    used_credit NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    rejection_reason TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- 8. User Profiles (Extends Supabase Auth)
@@ -97,7 +106,8 @@ CREATE TABLE IF NOT EXISTS profiles (
     phone TEXT,
     company_id UUID REFERENCES courier_companies(id) ON DELETE SET NULL,
     depot_id TEXT REFERENCES depots(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- 9. Conductors Staff Information
@@ -198,18 +208,28 @@ CREATE INDEX IF NOT EXISTS idx_reservations_shipment ON shipment_reservations(sh
 CREATE INDEX IF NOT EXISTS idx_status_history_shipment ON shipment_status_history(shipment_id);
 
 -- =========================================================
--- AUTOMATED UPDATED_AT TRIGGER FOR SHIPMENTS
+-- AUTOMATED UPDATED_AT TRIGGER
 -- =========================================================
 CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER 
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
 BEGIN
     NEW.updated_at = now();
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$;
+
+REVOKE EXECUTE ON FUNCTION update_updated_at_column() FROM PUBLIC, anon, authenticated;
 
 CREATE TRIGGER update_shipments_updated_at
     BEFORE UPDATE ON shipments
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_courier_companies_updated_at
+    BEFORE UPDATE ON courier_companies
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
@@ -229,6 +249,7 @@ ALTER TABLE shipments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE shipment_reservations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE shipment_status_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE conductors ENABLE ROW LEVEL SECURITY;
 
 -- Read policies for public reference master data (routes, stops, trips, buses)
 CREATE POLICY "Public read for network master data" ON stops FOR SELECT USING (true);
@@ -238,12 +259,56 @@ CREATE POLICY "Public read for routes" ON routes FOR SELECT USING (true);
 CREATE POLICY "Public read for route_stops" ON route_stops FOR SELECT USING (true);
 CREATE POLICY "Public read for buses" ON buses FOR SELECT USING (true);
 CREATE POLICY "Public read for scheduled_trips" ON scheduled_trips FOR SELECT USING (true);
-CREATE POLICY "Public read for courier_companies" ON courier_companies FOR SELECT USING (true);
+
+-- Courier Companies Policies
+CREATE POLICY "Courier companies select policy" ON courier_companies FOR SELECT TO public USING (true);
+CREATE POLICY "Courier companies insert policy" ON courier_companies FOR INSERT TO public WITH CHECK (true);
+CREATE POLICY "Courier companies update policy" ON courier_companies FOR UPDATE TO authenticated 
+USING (
+  EXISTS (
+    SELECT 1 FROM profiles 
+    WHERE profiles.id = auth.uid() 
+    AND (profiles.role = 'SUPER_ADMIN' OR profiles.company_id = courier_companies.id)
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM profiles 
+    WHERE profiles.id = auth.uid() 
+    AND (profiles.role = 'SUPER_ADMIN' OR profiles.company_id = courier_companies.id)
+  )
+);
 
 -- Profile Policies
-CREATE POLICY "Users can read own profile" ON profiles FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Super Admins can read all profiles" ON profiles FOR SELECT USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'SUPER_ADMIN')
+CREATE POLICY "Users can read own profile" ON profiles FOR SELECT TO authenticated 
+USING (
+  auth.uid() = id OR 
+  EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role = 'SUPER_ADMIN')
+);
+
+CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT TO authenticated 
+WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE TO authenticated 
+USING (
+  auth.uid() = id OR 
+  EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role = 'SUPER_ADMIN')
+)
+WITH CHECK (
+  auth.uid() = id OR 
+  EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role = 'SUPER_ADMIN')
+);
+
+-- Conductors Policies
+CREATE POLICY "Conductors select policy" ON conductors FOR SELECT TO authenticated 
+USING (
+  profile_id = auth.uid() OR 
+  EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role = 'SUPER_ADMIN')
+);
+
+CREATE POLICY "Super Admins manage conductors" ON conductors FOR ALL TO authenticated 
+USING (
+  EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role = 'SUPER_ADMIN')
 );
 
 -- Shipments RLS Policies
@@ -294,3 +359,4 @@ CREATE POLICY "Read company invoices" ON invoices FOR SELECT USING (
         AND (profiles.role = 'SUPER_ADMIN' OR profiles.company_id = invoices.courier_company_id)
     )
 );
+
