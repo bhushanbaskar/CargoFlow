@@ -10,6 +10,8 @@ import { FleetManageView } from '@/components/views/fleet-manage';
 import { ShipmentsView } from '@/components/views/shipments-view';
 import { AdminPartnersView } from '@/components/views/admin-partners-view';
 import { InvoicesView } from '@/components/views/invoices-view';
+import { SimulationController } from '@/components/views/simulation-controller';
+import { RecoveryCenterModal } from '@/components/views/recovery-center-modal';
 import { ArrowLeft, ShieldCheck, Clock } from 'lucide-react';
 
 export default function SuperAdminDashboardPage() {
@@ -85,6 +87,9 @@ export default function SuperAdminDashboardPage() {
       <HeaderNav />
 
       <main className="flex-1">{renderContent()}</main>
+
+      <SimulationController />
+      <RecoveryCenterModal />
 
       <footer className="bg-white border-t border-slate-200/80 py-4 px-6 text-center text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2 max-w-[1600px] mx-auto w-full">
         <div>

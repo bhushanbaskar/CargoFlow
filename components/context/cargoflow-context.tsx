@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { interpolatePositionAlongRoad } from '@/lib/routing-service';
 import PRECOMPUTED_ROUTES from '@/lib/precomputed-routes.json';
 import {
@@ -26,6 +26,9 @@ import {
   INITIAL_SHIPMENTS,
   INITIAL_COURIER_COMPANIES,
   DEMO_USER_PROFILES,
+  DEMO_ACTIVE_TASK_ID,
+  DEMO_ACTIVE_SHIPMENT,
+  DEMO_CACHED_SHIPMENT,
 } from '@/lib/mock-data';
 import {
   getCurrentAuthSession,
@@ -36,6 +39,36 @@ import {
   updateCourierCompanyStatus,
 } from '@/lib/auth-service';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
+import {
+  BackendStatus,
+  ContinuityMode,
+  QueuedOperation,
+  IncidentReport,
+  DataClassification,
+} from '@/lib/continuity-types';
+import {
+  getStoredBackendStatus,
+  setStoredBackendStatus,
+  getStoredLastSyncTime,
+  setStoredLastSyncTime,
+  getAllActiveTasks,
+  saveActiveTask,
+  saveAllActiveTasks,
+  getAllActiveTrips,
+  saveActiveTrips,
+  saveActiveTrip,
+  saveAllActiveTrips,
+  clearActiveTrips,
+  getAllQueuedOperations,
+  enqueueOperation,
+  updateQueuedOperation,
+  removeQueuedOperation,
+  clearAllQueuedOperations,
+  getAllIncidents,
+  saveIncident,
+  resetContinuityStore,
+} from '@/lib/continuity-db';
+import { DataRepository } from '@/lib/data-repository';
 
 interface CargoFlowContextType {
   currentRole: UserRole;
@@ -57,18 +90,21 @@ interface CargoFlowContextType {
   rejectCompany: (companyId: string, reason?: string) => Promise<void>;
   refreshCompanies: () => Promise<void>;
 
+  // Data Collections (Filtered dynamically by Data Resilience Layer)
   stops: Stop[];
   depots: Depot[];
   routes: Route[];
   buses: Bus[];
   trips: ScheduledTrip[];
+  allMasterTrips: ScheduledTrip[];
   shipments: Shipment[];
+  allMasterShipments: Shipment[];
   courierCompanies: CourierCompany[];
 
-  createShipment: (shipmentData: Omit<Shipment, 'id' | 'waybillNumber' | 'createdAt' | 'statusHistory' | 'status'>) => Shipment;
-  updateShipmentStatus: (shipmentId: string, newStatus: ShipmentStatus, locationRemarks?: string) => void;
+  createShipment: (shipmentData: Omit<Shipment, 'id' | 'waybillNumber' | 'createdAt' | 'statusHistory' | 'status'>) => Promise<Shipment>;
+  updateShipmentStatus: (shipmentId: string, newStatus: ShipmentStatus, locationRemarks?: string) => Promise<void>;
   
-  // Realtime Simulation State
+  // Realtime Simulation State (Bus GPS animation)
   isSimulating: boolean;
   toggleSimulation: () => void;
   selectedTripId: string | null;
@@ -76,11 +112,44 @@ interface CargoFlowContextType {
   selectedShipmentId: string | null;
   setSelectedShipmentId: (shipmentId: string | null) => void;
 
-  // Stats calculation
-  totalRevenue: number;
+  // Stats calculation (Enforcing Read Blackout Policy)
+  isServerDataAvailable: boolean;
+  totalRevenue: number | null; // null during blackout (renders as "—")
   totalCapacityKg: number;
-  utilizedCapacityKg: number;
-  networkUtilizationPercentage: number;
+  utilizedCapacityKg: number | null;
+  networkUtilizationPercentage: number | null; // null during blackout (renders as "—")
+  activeFleetTripsCount: number | null; // null during blackout
+  protectedTripsCount: number; // count of all in-transit protected buses
+  hiddenServerOnlyCount: number;
+
+  // ==========================================
+  // CONTINUITY & DATABASE BLACKOUT SIMULATION
+  // ==========================================
+  backendStatus: BackendStatus;
+  continuityMode: ContinuityMode;
+  pendingQueue: QueuedOperation[];
+  activeProtectedTasks: Shipment[];
+  activeProtectedTrips: ScheduledTrip[]; // ALL in-transit trips protected locally
+  lastSyncTimestamp: string | null;
+  syncProgressMessage: string | null;
+  syncStepLogs: string[];
+  conflictItems: QueuedOperation[];
+  incidents: IncidentReport[];
+
+  // Simulation Actions
+  simulateDatabaseFailure: () => Promise<void>;
+  restoreConnection: () => Promise<void>;
+  syncQueueNow: () => Promise<void>;
+  resolveConflict: (operationId: string, resolution: 'USE_LOCAL' | 'USE_SERVER') => Promise<void>;
+  simulateConflictOnNextOperation: () => void;
+  resetContinuityDemo: () => Promise<void>;
+  logConductorIncident: (report: Omit<IncidentReport, 'id' | 'timestamp' | 'status' | 'isProtectedLocally'>) => Promise<IncidentReport>;
+  
+  // Modals & Panels Control
+  isRecoveryCenterOpen: boolean;
+  setIsRecoveryCenterOpen: (open: boolean) => void;
+  statusNotification: { message: string; type: 'info' | 'warning' | 'success' | 'sync' } | null;
+  dismissStatusNotification: () => void;
 }
 
 const CargoFlowContext = createContext<CargoFlowContextType | undefined>(undefined);
@@ -94,19 +163,115 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
 
   const [activeTab, setActiveTab] = useState<string>('fleet-map');
 
+  // Master Raw State
   const [stops] = useState<Stop[]>(INITIAL_STOPS);
   const [depots] = useState<Depot[]>(INITIAL_DEPOTS);
   const [routes] = useState<Route[]>(INITIAL_ROUTES);
   const [buses] = useState<Bus[]>(INITIAL_BUSES);
-  const [trips, setTrips] = useState<ScheduledTrip[]>(INITIAL_SCHEDULED_TRIPS);
-  const [shipments, setShipments] = useState<Shipment[]>(INITIAL_SHIPMENTS);
+  const [masterTrips, setMasterTrips] = useState<ScheduledTrip[]>(INITIAL_SCHEDULED_TRIPS);
+  const [masterShipments, setMasterShipments] = useState<Shipment[]>(INITIAL_SHIPMENTS);
   const [courierCompanies, setCourierCompanies] = useState<CourierCompany[]>(INITIAL_COURIER_COMPANIES);
 
+  // Realtime Simulation State
   const [isSimulating, setIsSimulating] = useState<boolean>(true);
   const [selectedTripId, setSelectedTripId] = useState<string | null>('TRP001');
-  const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>('shp-1001');
+  const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(DEMO_ACTIVE_TASK_ID);
 
-  // Load session & companies on mount
+  // ==========================================
+  // CONTINUITY & SIMULATION STATE
+  // ==========================================
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>('ONLINE');
+  const [continuityMode, setContinuityMode] = useState<ContinuityMode>('READY');
+  const [pendingQueue, setPendingQueue] = useState<QueuedOperation[]>([]);
+  const [activeProtectedTasks, setActiveProtectedTasks] = useState<Shipment[]>([DEMO_ACTIVE_SHIPMENT]);
+  
+  // ALL active IN_TRANSIT trips protected locally
+  const [activeProtectedTrips, setActiveProtectedTrips] = useState<ScheduledTrip[]>(() =>
+    INITIAL_SCHEDULED_TRIPS.filter((t) => t.tripStatus === 'IN_TRANSIT')
+  );
+
+  const [lastSyncTimestamp, setLastSyncTimestamp] = useState<string | null>('10:31 AM');
+  const [syncProgressMessage, setSyncProgressMessage] = useState<string | null>(null);
+  const [syncStepLogs, setSyncStepLogs] = useState<string[]>([]);
+  const [conflictItems, setConflictItems] = useState<QueuedOperation[]>([]);
+  const [incidents, setIncidents] = useState<IncidentReport[]>([]);
+  const [shouldSimulateConflictNext, setShouldSimulateConflictNext] = useState<boolean>(false);
+
+  // UI Notification Bar State
+  const [statusNotification, setStatusNotification] = useState<{
+    message: string;
+    type: 'info' | 'warning' | 'success' | 'sync';
+  } | null>(null);
+
+  const [isRecoveryCenterOpen, setIsRecoveryCenterOpen] = useState<boolean>(false);
+
+  const showNotification = useCallback(
+    (message: string, type: 'info' | 'warning' | 'success' | 'sync' = 'info') => {
+      setStatusNotification({ message, type });
+      if (type === 'success' || type === 'info') {
+        setTimeout(() => {
+          setStatusNotification((prev) => (prev?.message === message ? null : prev));
+        }, 5000);
+      }
+    },
+    []
+  );
+
+  const dismissStatusNotification = useCallback(() => {
+    setStatusNotification(null);
+  }, []);
+
+  // ----------------------------------------------------
+  // INITIALIZATION & PERSISTENCE LOAD (Survives Page Refresh)
+  // ----------------------------------------------------
+  useEffect(() => {
+    async function loadContinuityState() {
+      try {
+        const storedStatus = await getStoredBackendStatus();
+        const storedQueue = await getAllQueuedOperations();
+        const storedTasks = await getAllActiveTasks();
+        const storedTrips = await getAllActiveTrips();
+        const storedIncidents = await getAllIncidents();
+        const storedSyncTime = await getStoredLastSyncTime();
+
+        setBackendStatus(storedStatus);
+        setPendingQueue(storedQueue);
+        setIncidents(storedIncidents);
+        if (storedSyncTime) setLastSyncTimestamp(storedSyncTime);
+
+        if (storedStatus === 'SIMULATED_OFFLINE') {
+          setContinuityMode(storedQueue.length > 0 ? 'ACTIVE' : 'READY');
+          if (storedTasks.length > 0) {
+            setActiveProtectedTasks(storedTasks);
+          } else {
+            setActiveProtectedTasks([DEMO_ACTIVE_SHIPMENT]);
+            await saveActiveTask(DEMO_ACTIVE_SHIPMENT);
+          }
+
+          if (storedTrips.length > 0) {
+            setActiveProtectedTrips(storedTrips);
+          } else {
+            const inTransitSnapshot = DataRepository.snapshotActiveTrips(INITIAL_SCHEDULED_TRIPS);
+            setActiveProtectedTrips(inTransitSnapshot);
+            await saveAllActiveTrips(inTransitSnapshot);
+          }
+        } else {
+          setContinuityMode('READY');
+          if (storedTasks.length > 0) {
+            setActiveProtectedTasks(storedTasks);
+          }
+          if (storedTrips.length > 0) {
+            setActiveProtectedTrips(storedTrips);
+          }
+        }
+      } catch (err) {
+        console.error('Error loading continuity state from IndexedDB:', err);
+      }
+    }
+
+    loadContinuityState();
+  }, []);
+
   useEffect(() => {
     async function loadInitialData() {
       setIsLoadingAuth(true);
@@ -118,7 +283,6 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
           setCurrentCompany(session.company || null);
           setIsAuthenticated(true);
         } else {
-          // Default to demo admin profile for initial guest state if not explicitly signed out
           setCurrentProfile(DEMO_USER_PROFILES[0]);
           setCurrentRole('SUPER_ADMIN');
           setIsAuthenticated(false);
@@ -135,11 +299,12 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
 
     loadInitialData();
 
-    // Listen to Supabase auth events (sign in, sign out, token refresh)
     if (isSupabaseConfigured) {
       try {
         const supabase = getSupabase();
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        const {
+          data: { subscription },
+        } = supabase.auth.onAuthStateChange(async (event) => {
           if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
             const authSession = await getCurrentAuthSession();
             if (authSession) {
@@ -168,7 +333,6 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
     setCourierCompanies(list);
   };
 
-  // Switch role function for quick demo testing
   const switchRole = (role: UserRole) => {
     setCurrentRole(role);
     const profile = DEMO_USER_PROFILES.find((p) => p.role === role) || DEMO_USER_PROFILES[0];
@@ -231,7 +395,6 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
   };
 
   const approveCompany = async (companyId: string) => {
-    // 1. Optimistic immediate local state update so UI reacts in 0ms
     setCourierCompanies((prev) =>
       prev.map((c) =>
         c.id === companyId ? { ...c, status: 'ACTIVE' as const, rejectionReason: undefined } : c
@@ -243,7 +406,6 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       setCurrentProfile((prev) => ({ ...prev, companyStatus: 'ACTIVE' }));
     }
 
-    // 2. Persist to database
     try {
       await updateCourierCompanyStatus(companyId, 'ACTIVE');
     } catch (e) {
@@ -253,7 +415,6 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
   };
 
   const rejectCompany = async (companyId: string, reason?: string) => {
-    // 1. Optimistic immediate local state update
     setCourierCompanies((prev) =>
       prev.map((c) =>
         c.id === companyId ? { ...c, status: 'REJECTED' as const, rejectionReason: reason } : c
@@ -265,7 +426,6 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       setCurrentProfile((prev) => ({ ...prev, companyStatus: 'REJECTED' }));
     }
 
-    // 2. Persist to database
     try {
       await updateCourierCompanyStatus(companyId, 'REJECTED', reason);
     } catch (e) {
@@ -274,36 +434,177 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
     await refreshCompanies();
   };
 
-  // Create Shipment Function
-  const createShipment = (
-    data: Omit<Shipment, 'id' | 'waybillNumber' | 'createdAt' | 'statusHistory' | 'status'>
-  ): Shipment => {
-    const timestamp = new Date().toISOString();
-    const waybillNumber = `WB-${new Date().getFullYear()}-MSR-${Math.floor(1000 + Math.random() * 9000)}`;
-    const qrCodeHash = `CF-QR-${Math.floor(100 + Math.random() * 900)}-${data.tripId}`;
+  // ====================================================
+  // SIMULATION ACTIONS & CONTINUITY WORKFLOWS
+  // ====================================================
 
-    const newShipment: Shipment = {
-      ...data,
-      id: `shp-${Date.now()}`,
-      waybillNumber,
-      qrCodeHash,
-      status: 'RESERVED',
-      createdAt: timestamp,
-      statusHistory: [
-        {
-          status: 'RESERVED',
-          timestamp,
-          location: 'Origin Depot Station',
-          remarks: `Capacity reserved on Bus Trip ${data.tripId}`
+  /**
+   * Simulate Database Failure (Snapshots ALL IN_TRANSIT trips across fleet)
+   */
+  const simulateDatabaseFailure = async () => {
+    setBackendStatus('SIMULATED_OFFLINE');
+    setContinuityMode('ACTIVE');
+    await setStoredBackendStatus('SIMULATED_OFFLINE');
+
+    // 1. Collect and snapshot ALL currently active IN_TRANSIT trips
+    const inTransitSnapshot = DataRepository.snapshotActiveTrips(masterTrips);
+    setActiveProtectedTrips(inTransitSnapshot);
+    await saveAllActiveTrips(inTransitSnapshot);
+
+    // 2. Ensure active shipments are stored in IndexedDB
+    const activeTasks = await getAllActiveTasks();
+    if (activeTasks.length === 0) {
+      await saveActiveTask(DEMO_ACTIVE_SHIPMENT);
+      setActiveProtectedTasks([DEMO_ACTIVE_SHIPMENT]);
+    }
+
+    // Set selected shipment to active task if currently on an unavailable record
+    setSelectedShipmentId(DEMO_ACTIVE_TASK_ID);
+
+    showNotification(
+      `⚠ CONTINUITY MODE ACTIVE: Primary datastore offline. ${inTransitSnapshot.length} active in-transit trip(s) protected locally.`,
+      'warning'
+    );
+  };
+
+  /**
+   * Restore Database Connection & Trigger Synchronization
+   */
+  const restoreConnection = async () => {
+    setBackendStatus('ONLINE');
+    await setStoredBackendStatus('ONLINE');
+
+    showNotification('● Primary datastore re-established. Synchronizing local continuity operations...', 'info');
+
+    // Trigger automatic synchronization
+    await syncQueueNow();
+  };
+
+  /**
+   * Synchronize Pending Queue
+   */
+  const syncQueueNow = async () => {
+    setContinuityMode('SYNCING');
+    setSyncStepLogs([]);
+    setSyncProgressMessage('Reading local continuity queue...');
+
+    try {
+      const { syncedCount, failedCount, conflictOps } = await DataRepository.syncPendingQueue(
+        (stepMsg) => {
+          setSyncProgressMessage(stepMsg);
+          setSyncStepLogs((prev) => [...prev, stepMsg]);
         }
-      ]
-    };
+      );
 
-    setShipments(prev => [newShipment, ...prev]);
+      const refreshedQueue = await getAllQueuedOperations();
+      setPendingQueue(refreshedQueue);
+
+      const refreshedSyncTime =
+        (await getStoredLastSyncTime()) ||
+        new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setLastSyncTimestamp(refreshedSyncTime);
+
+      if (conflictOps.length > 0) {
+        setContinuityMode('CONFLICT');
+        setConflictItems(conflictOps);
+        showNotification(
+          `⚠ ${conflictOps.length} conflict(s) detected during replay. Review required in Recovery Center.`,
+          'warning'
+        );
+      } else {
+        setContinuityMode('READY');
+        setSyncProgressMessage(null);
+        showNotification(`✓ All changes saved · ${syncedCount} operation(s) reconciled with central datastore.`, 'success');
+      }
+    } catch (err: any) {
+      console.error('Synchronization failed:', err);
+      setContinuityMode('READY');
+      showNotification(`Sync encountered an error: ${err.message}`, 'warning');
+    }
+  };
+
+  /**
+   * Resolve a Conflict
+   */
+  const resolveConflict = async (operationId: string, resolution: 'USE_LOCAL' | 'USE_SERVER') => {
+    const targetOp = pendingQueue.find((q) => q.operation_id === operationId);
+    if (!targetOp) return;
+
+    if (resolution === 'USE_LOCAL') {
+      targetOp.status = 'SYNCED';
+      targetOp.conflict_reason = undefined;
+      await updateQueuedOperation(targetOp);
+      showNotification(`Resolved: Local version accepted and synchronized.`, 'success');
+    } else {
+      await removeQueuedOperation(operationId);
+      showNotification(`Resolved: Local change discarded in favor of central server state.`, 'info');
+    }
+
+    const refreshed = await getAllQueuedOperations();
+    setPendingQueue(refreshed);
+    setConflictItems(refreshed.filter((q) => q.status === 'NEEDS_REVIEW'));
+
+    if (refreshed.filter((q) => q.status === 'NEEDS_REVIEW').length === 0) {
+      setContinuityMode('READY');
+    }
+  };
+
+  /**
+   * Simulate a Conflict on Next Mutated Operation
+   */
+  const simulateConflictOnNextOperation = () => {
+    setShouldSimulateConflictNext(true);
+    showNotification('Conflict Simulation Armed: Next local operation will produce a merge conflict upon restoration.', 'info');
+  };
+
+  /**
+   * Reset the Entire Continuity Demo to Initial State
+   */
+  const resetContinuityDemo = async () => {
+    await resetContinuityStore();
+    setBackendStatus('ONLINE');
+    setContinuityMode('READY');
+    setPendingQueue([]);
+    setConflictItems([]);
+    setSyncStepLogs([]);
+    setSyncProgressMessage(null);
+    setLastSyncTimestamp('10:31 AM');
+    setSelectedShipmentId(DEMO_ACTIVE_TASK_ID);
+    setMasterShipments(INITIAL_SHIPMENTS);
+    setMasterTrips(INITIAL_SCHEDULED_TRIPS);
+    setActiveProtectedTasks([DEMO_ACTIVE_SHIPMENT]);
+    setActiveProtectedTrips(INITIAL_SCHEDULED_TRIPS.filter((t) => t.tripStatus === 'IN_TRANSIT'));
+    await saveActiveTask(DEMO_ACTIVE_SHIPMENT);
+    showNotification('Demo state reset to clean baseline (ONLINE).', 'info');
+  };
+
+  /**
+   * Create Shipment Function (Supports Offline Continuity Queue)
+   */
+  const createShipment = async (
+    data: Omit<Shipment, 'id' | 'waybillNumber' | 'createdAt' | 'statusHistory' | 'status'>
+  ): Promise<Shipment> => {
+    const { newShipment, queuedOp, isLocal } = await DataRepository.createShipment(data, backendStatus);
+
+    if (isLocal && queuedOp) {
+      if (shouldSimulateConflictNext) {
+        queuedOp.conflict_reason = 'Server record was modified by another operator during disconnection window.';
+        queuedOp.server_snapshot = { ...newShipment, weightKg: newShipment.weightKg + 10 };
+        await updateQueuedOperation(queuedOp);
+        setShouldSimulateConflictNext(false);
+      }
+
+      setPendingQueue((prev) => [queuedOp, ...prev.filter((q) => q.operation_id !== queuedOp.operation_id)]);
+      setActiveProtectedTasks((prev) => [newShipment, ...prev]);
+      showNotification(`✓ Saved on this device (${newShipment.waybillNumber}) · Pending synchronization`, 'warning');
+    }
+
+    setMasterShipments((prev) => [newShipment, ...prev]);
+    setSelectedShipmentId(newShipment.id);
 
     // Deduct capacity from the trip
-    setTrips(prev =>
-      prev.map(t => {
+    setMasterTrips((prev) =>
+      prev.map((t) => {
         if (t.id === data.tripId) {
           const newAvail = Math.max(0, t.availableCargoCapacityKg - data.weightKg);
           return { ...t, availableCargoCapacityKg: newAvail };
@@ -315,38 +616,51 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
     return newShipment;
   };
 
-  // Update Shipment Status Function
-  const updateShipmentStatus = (shipmentId: string, newStatus: ShipmentStatus, locationRemarks?: string) => {
-    const timestamp = new Date().toISOString();
+  /**
+   * Update Shipment Status Function (Supports Offline Continuity Queue)
+   */
+  const updateShipmentStatus = async (
+    shipmentId: string,
+    newStatus: ShipmentStatus,
+    locationRemarks?: string
+  ) => {
+    const targetShipment =
+      activeProtectedTasks.find((t) => t.id === shipmentId) ||
+      masterShipments.find((s) => s.id === shipmentId) ||
+      DEMO_ACTIVE_SHIPMENT;
 
-    setShipments(prev =>
-      prev.map(shp => {
-        if (shp.id === shipmentId) {
-          const updatedHistory = [
-            ...shp.statusHistory,
-            {
-              status: newStatus,
-              timestamp,
-              location: currentProfile.depotName || 'Depot Bay Station',
-              remarks: locationRemarks || `Status updated to ${newStatus}`
-            }
-          ];
-          return {
-            ...shp,
-            status: newStatus,
-            statusHistory: updatedHistory
-          };
-        }
-        return shp;
-      })
+    const { updatedShipment, queuedOp, isLocal } = await DataRepository.updateShipmentStatus(
+      shipmentId,
+      newStatus,
+      locationRemarks,
+      targetShipment,
+      backendStatus,
+      currentProfile.fullName,
+      currentProfile.depotName || 'Depot Bay Station'
     );
 
-    // If shipment is DELIVERED or CANCELLED, restore capacity to trip
+    if (isLocal && queuedOp) {
+      if (shouldSimulateConflictNext) {
+        queuedOp.conflict_reason = 'Central server logged status as IN_TRANSIT while local device marked DELIVERED.';
+        queuedOp.server_snapshot = { ...targetShipment, status: 'IN_TRANSIT' };
+        await updateQueuedOperation(queuedOp);
+        setShouldSimulateConflictNext(false);
+      }
+
+      setPendingQueue((prev) => [queuedOp, ...prev.filter((q) => q.operation_id !== queuedOp.operation_id)]);
+      setActiveProtectedTasks((prev) => [updatedShipment, ...prev.filter((t) => t.id !== updatedShipment.id)]);
+      showNotification(`✓ Saved on this device: Status updated to ${newStatus} · Pending synchronization`, 'warning');
+    }
+
+    setMasterShipments((prev) =>
+      prev.map((shp) => (shp.id === shipmentId ? updatedShipment : shp))
+    );
+
+    // Capacity restoration on delivery/cancellation
     if (newStatus === 'DELIVERED' || newStatus === 'CANCELLED') {
-      const targetShipment = shipments.find(s => s.id === shipmentId);
       if (targetShipment) {
-        setTrips(prev =>
-          prev.map(t => {
+        setMasterTrips((prev) =>
+          prev.map((t) => {
             if (t.id === targetShipment.tripId) {
               const restoredAvail = Math.min(t.totalCargoCapacityKg, t.availableCargoCapacityKg + targetShipment.weightKg);
               return { ...t, availableCargoCapacityKg: restoredAvail };
@@ -358,7 +672,24 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Track simulation progress along road paths (0 = origin, 1 = destination)
+  /**
+   * Log an operational incident/delay during blackout
+   */
+  const logConductorIncident = async (
+    report: Omit<IncidentReport, 'id' | 'timestamp' | 'status' | 'isProtectedLocally'>
+  ): Promise<IncidentReport> => {
+    const { incident, queuedOp, isLocal } = await DataRepository.logIncident(report, backendStatus);
+
+    if (isLocal && queuedOp) {
+      setPendingQueue((prev) => [queuedOp, ...prev]);
+      showNotification(`✓ Incident logged on device · Pending synchronization`, 'warning');
+    }
+
+    setIncidents((prev) => [incident, ...prev]);
+    return incident;
+  };
+
+  // Realtime vehicle simulation advancing along physical road geometry (Active when online)
   const tripProgressRef = useRef<{ [tripId: string]: number }>({
     TRP001: 0.35,
     TRP003: 0.52,
@@ -368,21 +699,19 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
     TRP010: 0.72,
     TRP013: 0.45,
     TRP014: 0.58,
-    TRP015: 0.60
+    TRP015: 0.60,
   });
 
-  // Realtime vehicle simulation advancing along physical road geometry
   useEffect(() => {
-    if (!isSimulating) return;
+    if (!isSimulating || backendStatus === 'SIMULATED_OFFLINE') return;
 
     const interval = setInterval(() => {
-      setTrips(prevTrips =>
-        prevTrips.map(trip => {
+      setMasterTrips((prevTrips) =>
+        prevTrips.map((trip) => {
           if (trip.tripStatus === 'IN_TRANSIT') {
             const precomputed = (PRECOMPUTED_ROUTES as Record<string, any>)[trip.routeId];
             if (precomputed && precomputed.coordinates && precomputed.coordinates.length > 0) {
               const currentProgress = tripProgressRef.current[trip.id] ?? 0.35;
-              // Advance 0.4% along the highway path per tick, wrap around when route finishes
               const nextProgress = currentProgress >= 0.95 ? 0.05 : currentProgress + 0.004;
               tripProgressRef.current[trip.id] = nextProgress;
 
@@ -396,8 +725,8 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
                 currentLocation: {
                   latitude: lat,
                   longitude: lng,
-                  betweenStopIds: trip.currentLocation?.betweenStopIds || ['STP001', 'STP004']
-                }
+                  betweenStopIds: trip.currentLocation?.betweenStopIds || ['STP001', 'STP004'],
+                },
               };
             }
           }
@@ -407,14 +736,100 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
     }, 2500);
 
     return () => clearInterval(interval);
-  }, [isSimulating]);
+  }, [isSimulating, backendStatus]);
 
-  // Network stats calculations
-  const totalRevenue = shipments.reduce((sum, s) => sum + (s.status !== 'CANCELLED' ? s.fareAmount : 0), 12850);
-  const totalCapacityKg = trips.reduce((sum, t) => sum + t.totalCargoCapacityKg, 0);
-  const availableCapacityKg = trips.reduce((sum, t) => sum + t.availableCargoCapacityKg, 0);
-  const utilizedCapacityKg = Math.max(0, totalCapacityKg - availableCapacityKg);
-  const networkUtilizationPercentage = Math.round((utilizedCapacityKg / (totalCapacityKg || 1)) * 100);
+  // ----------------------------------------------------
+  // STRICT READ BLACKOUT POLICY: DYNAMIC EXPOSURE
+  // ----------------------------------------------------
+
+  // Visible Shipments: Filtered to ACTIVE_LOCAL + STATIC_CACHE when offline
+  const visibleShipments = useMemo(() => {
+    if (backendStatus === 'ONLINE') {
+      return masterShipments;
+    }
+
+    // OFFLINE: Only active protected tasks and cached snapshot
+    const activeMap = new Map(activeProtectedTasks.map((t) => [t.id, t]));
+    if (!activeMap.has(DEMO_ACTIVE_TASK_ID)) {
+      activeMap.set(DEMO_ACTIVE_TASK_ID, DEMO_ACTIVE_SHIPMENT);
+    }
+
+    const list: Shipment[] = Array.from(activeMap.values());
+    if (!list.some((s) => s.id === DEMO_CACHED_SHIPMENT.id)) {
+      list.push(DEMO_CACHED_SHIPMENT);
+    }
+    return list;
+  }, [backendStatus, masterShipments, activeProtectedTasks]);
+
+  const hiddenServerOnlyCount = useMemo(() => {
+    if (backendStatus === 'ONLINE') return 0;
+    return masterShipments.filter((s) => !visibleShipments.some((v) => v.id === s.id)).length;
+  }, [backendStatus, masterShipments, visibleShipments]);
+
+  // Visible Trips: When offline, ALL IN_TRANSIT protected buses are rendered at last known position
+  const visibleTrips = useMemo(() => {
+    if (backendStatus === 'ONLINE') {
+      return masterTrips;
+    }
+
+    // Return all protected in-transit trips
+    if (activeProtectedTrips.length > 0) {
+      return activeProtectedTrips.map((trip) => ({
+        ...trip,
+        currentLocation: trip.currentLocation || {
+          latitude: 19.6012,
+          longitude: 74.2114,
+          betweenStopIds: ['STP001', 'STP004'] as [string, string],
+        },
+      }));
+    }
+
+    // Fallback: in-transit trips from master
+    return masterTrips
+      .filter((t) => t.tripStatus === 'IN_TRANSIT')
+      .map((trip) => ({
+        ...trip,
+        currentLocation: trip.currentLocation || {
+          latitude: 19.6012,
+          longitude: 74.2114,
+          betweenStopIds: ['STP001', 'STP004'] as [string, string],
+        },
+      }));
+  }, [backendStatus, masterTrips, activeProtectedTrips]);
+
+  // Metrics: Withheld (null) during blackout
+  const isServerDataAvailable = backendStatus === 'ONLINE';
+  const totalRevenue = useMemo(() => {
+    if (!isServerDataAvailable) return null;
+    return masterShipments.reduce(
+      (sum, s) => sum + (s.status !== 'CANCELLED' ? s.fareAmount : 0),
+      14300
+    );
+  }, [isServerDataAvailable, masterShipments]);
+
+  const totalCapacityKg = useMemo(() => {
+    return masterTrips.reduce((sum, t) => sum + t.totalCargoCapacityKg, 0);
+  }, [masterTrips]);
+
+  const utilizedCapacityKg = useMemo(() => {
+    if (!isServerDataAvailable) return null;
+    const avail = masterTrips.reduce((sum, t) => sum + t.availableCargoCapacityKg, 0);
+    return Math.max(0, totalCapacityKg - avail);
+  }, [isServerDataAvailable, masterTrips, totalCapacityKg]);
+
+  const networkUtilizationPercentage = useMemo(() => {
+    if (!isServerDataAvailable || utilizedCapacityKg === null) return null;
+    return Math.round((utilizedCapacityKg / (totalCapacityKg || 1)) * 100);
+  }, [isServerDataAvailable, utilizedCapacityKg, totalCapacityKg]);
+
+  const activeFleetTripsCount = useMemo(() => {
+    if (!isServerDataAvailable) return null;
+    return masterTrips.length;
+  }, [isServerDataAvailable, masterTrips]);
+
+  const protectedTripsCount = useMemo(() => {
+    return activeProtectedTrips.length;
+  }, [activeProtectedTrips]);
 
   return (
     <CargoFlowContext.Provider
@@ -437,21 +852,54 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
         depots,
         routes,
         buses,
-        trips,
-        shipments,
+        trips: visibleTrips,
+        allMasterTrips: masterTrips,
+        shipments: visibleShipments,
+        allMasterShipments: masterShipments,
         courierCompanies,
         createShipment,
         updateShipmentStatus,
-        isSimulating,
+        isSimulating: isSimulating && backendStatus === 'ONLINE',
         toggleSimulation: () => setIsSimulating(!isSimulating),
         selectedTripId,
         setSelectedTripId,
         selectedShipmentId,
         setSelectedShipmentId,
+
+        // Network Metrics
+        isServerDataAvailable,
         totalRevenue,
         totalCapacityKg,
         utilizedCapacityKg,
         networkUtilizationPercentage,
+        activeFleetTripsCount,
+        protectedTripsCount,
+        hiddenServerOnlyCount,
+
+        // Continuity & Database Failure Simulation
+        backendStatus,
+        continuityMode,
+        pendingQueue,
+        activeProtectedTasks,
+        activeProtectedTrips,
+        lastSyncTimestamp,
+        syncProgressMessage,
+        syncStepLogs,
+        conflictItems,
+        incidents,
+        simulateDatabaseFailure,
+        restoreConnection,
+        syncQueueNow,
+        resolveConflict,
+        simulateConflictOnNextOperation,
+        resetContinuityDemo,
+        logConductorIncident,
+
+        // Modal Controls
+        isRecoveryCenterOpen,
+        setIsRecoveryCenterOpen,
+        statusNotification,
+        dismissStatusNotification,
       }}
     >
       {children}

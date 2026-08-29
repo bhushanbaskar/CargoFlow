@@ -18,7 +18,10 @@ import {
   Clock,
   UserCheck,
   Sparkles,
+  Database,
+  Activity,
 } from 'lucide-react';
+import { ContinuityStatusBar } from './continuity-status-bar';
 
 export function HeaderNav() {
   const router = useRouter();
@@ -34,7 +37,14 @@ export function HeaderNav() {
     courierCompanies,
     isSimulating,
     toggleSimulation,
+    backendStatus,
+    continuityMode,
+    pendingQueue,
+    setIsRecoveryCenterOpen,
   } = useCargoFlow();
+
+  const isOffline = backendStatus === 'SIMULATED_OFFLINE';
+  const pendingCount = pendingQueue.filter((q) => q.status === 'PENDING' || q.status === 'NEEDS_REVIEW').length;
 
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
 
@@ -71,75 +81,95 @@ export function HeaderNav() {
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-[#f4f5f7] border-b border-zinc-200/80 px-4 lg:px-8 py-2.5">
-      <div className="max-w-[1600px] mx-auto flex items-center justify-between h-14">
-        
-        {/* Left Brand Logo & Tabs */}
-        <div className="flex items-center gap-6">
-          <Link
-            href="/"
-            className="flex items-center cursor-pointer hover:opacity-90 transition-opacity"
-          >
-            <CargoFlowLogo size="sm" badge="MSRTC" />
-          </Link>
-
-          {/* Nav Tabs */}
-          <nav className="hidden lg:flex items-center gap-1.5 bg-zinc-200/60 p-1 rounded-full border border-zinc-300/40">
-            {navTabs.map((tab) => {
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    setActiveTab(tab.id);
-                    
-                    if (currentRole === 'SUPER_ADMIN' && pathname && !pathname.startsWith('/admin/dashboard')) {
-                      router.push('/admin/dashboard');
-                    } else if (currentRole === 'COURIER_PARTNER' && pathname && !pathname.startsWith('/partner/dashboard')) {
-                      router.push('/partner/dashboard');
-                    } else if (currentRole === 'CONDUCTOR' && pathname && !pathname.startsWith('/conductor/dashboard')) {
-                      router.push('/conductor/dashboard');
-                    }
-                  }}
-                  className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
-                    isActive
-                      ? 'bg-zinc-900 text-white shadow-xs'
-                      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-300/50'
-                  }`}
-                >
-                  <span>{tab.label}</span>
-                  {tab.badge !== undefined && tab.badge > 0 && (
-                    <span
-                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                        isActive ? 'bg-amber-400 text-zinc-950' : 'bg-amber-500 text-white'
-                      }`}
-                    >
-                      {tab.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        {/* Right Action Icons & User Capsule */}
-        <div className="flex items-center gap-3">
+    <>
+      <ContinuityStatusBar />
+      <header className="sticky top-0 z-40 bg-[#f4f5f7] border-b border-zinc-200/80 px-4 lg:px-8 py-2.5">
+        <div className="max-w-[1600px] mx-auto flex items-center justify-between h-14">
           
-          {/* Telemetry Switcher */}
-          <button
-            onClick={toggleSimulation}
-            className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-zinc-200/90 text-xs font-medium text-zinc-700 shadow-2xs hover:bg-zinc-50"
-          >
-            <span
-              className={`w-2 h-2 rounded-full ${
-                isSimulating ? 'bg-[#d9f99d] ring-2 ring-lime-400' : 'bg-amber-400'
-              }`}
-            />
-            <span>{isSimulating ? 'GPS Live' : 'Paused'}</span>
-          </button>
+          {/* Left Brand Logo & Tabs */}
+          <div className="flex items-center gap-6">
+            <Link
+              href="/"
+              className="flex items-center cursor-pointer hover:opacity-90 transition-opacity"
+            >
+              <CargoFlowLogo size="sm" badge="MSRTC" />
+            </Link>
 
-          {/* Role Dropdown */}
+            {/* Nav Tabs */}
+            <nav className="hidden lg:flex items-center gap-1.5 bg-zinc-200/60 p-1 rounded-full border border-zinc-300/40">
+              {navTabs.map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      
+                      if (currentRole === 'SUPER_ADMIN' && pathname && !pathname.startsWith('/admin/dashboard')) {
+                        router.push('/admin/dashboard');
+                      } else if (currentRole === 'COURIER_PARTNER' && pathname && !pathname.startsWith('/partner/dashboard')) {
+                        router.push('/partner/dashboard');
+                      } else if (currentRole === 'CONDUCTOR' && pathname && !pathname.startsWith('/conductor/dashboard')) {
+                        router.push('/conductor/dashboard');
+                      }
+                    }}
+                    className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
+                      isActive
+                        ? 'bg-zinc-900 text-white shadow-xs'
+                        : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-300/50'
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    {tab.badge !== undefined && tab.badge > 0 && (
+                      <span
+                        className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                          isActive ? 'bg-amber-400 text-zinc-950' : 'bg-amber-500 text-white'
+                        }`}
+                      >
+                        {tab.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* Right Action Icons & User Capsule */}
+          <div className="flex items-center gap-3">
+            
+            {/* Datastore Status Indicator */}
+            <button
+              onClick={() => setIsRecoveryCenterOpen(true)}
+              className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium shadow-2xs transition-colors ${
+                isOffline
+                  ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                  : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50'
+              }`}
+            >
+              <Database className={`w-3.5 h-3.5 ${isOffline ? 'text-amber-600' : 'text-emerald-600'}`} />
+              <span className="font-bold">{isOffline ? 'Continuity Active' : 'DB Online'}</span>
+              {pendingCount > 0 && (
+                <span className="px-1.5 py-0.2 bg-amber-500 text-zinc-950 font-mono font-bold rounded-full text-[10px]">
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+
+            {/* Telemetry Switcher */}
+            <button
+              onClick={toggleSimulation}
+              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-zinc-200/90 text-xs font-medium text-zinc-700 shadow-2xs hover:bg-zinc-50"
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  isSimulating ? 'bg-[#d9f99d] ring-2 ring-lime-400' : 'bg-amber-400'
+                }`}
+              />
+              <span>{isSimulating ? 'GPS Live' : 'Paused'}</span>
+            </button>
+
+            {/* Role Dropdown */}
           <div className="relative">
             <button
               onClick={() => setRoleMenuOpen(!roleMenuOpen)}
@@ -284,5 +314,6 @@ export function HeaderNav() {
         })}
       </div>
     </header>
+    </>
   );
 }

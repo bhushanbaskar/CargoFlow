@@ -3,9 +3,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ScheduledTrip, Bus, Route, Stop } from '@/lib/types';
 import { getRouteRoadGeometry, RoadRouteResult } from '@/lib/routing-service';
+import { useCargoFlow } from '@/components/context/cargoflow-context';
 import type LType from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { ShieldCheck, AlertCircle, RefreshCw } from 'lucide-react';
+import { ShieldCheck, AlertCircle, RefreshCw, HardDrive } from 'lucide-react';
 
 interface LeafletFleetMapProps {
   trips: ScheduledTrip[];
@@ -24,6 +25,9 @@ export default function LeafletFleetMap({
   selectedTripId,
   onSelectTrip
 }: LeafletFleetMapProps) {
+  const { backendStatus } = useCargoFlow();
+  const isOffline = backendStatus === 'SIMULATED_OFFLINE';
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<LType.Map | null>(null);
   const markersRef = useRef<{ [key: string]: LType.Marker }>({});
@@ -298,13 +302,17 @@ export default function LeafletFleetMap({
       const html = `
         <div class="relative cursor-pointer transition-transform duration-200 ${isSelected ? 'scale-110 z-30' : 'hover:scale-105 z-20'}">
           <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full shadow-lg border transition-all ${
-            isSelected
+            isOffline
+              ? 'bg-amber-950/90 text-amber-100 border-amber-500/50 shadow-amber-900/30'
+              : isSelected
               ? 'bg-slate-900 text-white border-slate-900 ring-4 ring-blue-500/30 shadow-blue-500/20'
               : 'bg-white text-slate-900 border-slate-200 hover:border-slate-400'
           }">
-            <div class="w-2 h-2 rounded-full ${trip.tripStatus === 'IN_TRANSIT' ? 'bg-[#d9f99d]' : 'bg-amber-400'} animate-pulse"></div>
+            <div class="w-2 h-2 rounded-full ${isOffline ? 'bg-amber-400' : trip.tripStatus === 'IN_TRANSIT' ? 'bg-[#d9f99d]' : 'bg-amber-400'} ${isOffline ? '' : 'animate-pulse'}"></div>
             <span class="font-mono text-[11px] font-extrabold tracking-tight">${bus?.registration || trip.busId}</span>
-            <span class="px-1.5 py-0.2 rounded-full text-[9px] font-bold ${isSelected ? 'bg-zinc-800 text-zinc-200' : 'bg-slate-100 text-slate-700'}">${trip.availableCargoCapacityKg}kg free</span>
+            <span class="px-1.5 py-0.2 rounded-full text-[9px] font-bold ${isOffline ? 'bg-amber-900 text-amber-200' : isSelected ? 'bg-zinc-800 text-zinc-200' : 'bg-slate-100 text-slate-700'}">
+              ${isOffline ? '10:31 AM' : `${trip.availableCargoCapacityKg}kg free`}
+            </span>
           </div>
         </div>
       `;
@@ -328,7 +336,7 @@ export default function LeafletFleetMap({
         markersRef.current[trip.id] = marker;
       }
     });
-  }, [trips, selectedTripId, onSelectTrip, leafletLib]);
+  }, [trips, selectedTripId, onSelectTrip, leafletLib, isOffline]);
 
   return (
     <div className="w-full h-full relative rounded-3xl overflow-hidden border border-zinc-200/80 shadow-xs">
@@ -337,22 +345,26 @@ export default function LeafletFleetMap({
 
       {/* Road Telemetry Overlay Badge */}
       <div className="absolute top-4 left-4 z-20 flex flex-col gap-2 max-w-sm pointer-events-auto">
-        <div className="bg-slate-900/90 backdrop-blur-md text-white px-3.5 py-2 rounded-2xl border border-slate-700 shadow-xl flex items-center justify-between gap-3 text-xs">
+        <div className={`backdrop-blur-md px-3.5 py-2 rounded-2xl border shadow-xl flex items-center justify-between gap-3 text-xs ${
+          isOffline
+            ? 'bg-amber-950/90 text-amber-100 border-amber-700'
+            : 'bg-slate-900/90 text-white border-slate-700'
+        }`}>
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isOffline ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse'}`} />
             <div className="flex flex-col">
-              <span className="font-extrabold font-sans text-white text-[11px] tracking-tight">
-                Physical Road Network Routing
+              <span className="font-extrabold font-sans text-[11px] tracking-tight">
+                {isOffline ? 'Static Road Infrastructure (Cached)' : 'Physical Road Network Routing'}
               </span>
-              <span className="text-[10px] text-emerald-400 font-mono">
-                OSRM Highway Graph • Verified Road Path
+              <span className={`text-[10px] font-mono ${isOffline ? 'text-amber-300' : 'text-emerald-400'}`}>
+                {isOffline ? 'Live GPS stream offline · Showing static routes' : 'OSRM Highway Graph • Verified Road Path'}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-lg font-mono text-[10px] text-slate-300">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Strict Road Geometries</span>
+          <div className="flex items-center gap-1 bg-black/40 px-2 py-1 rounded-lg font-mono text-[10px] text-slate-300">
+            {isOffline ? <HardDrive className="w-3.5 h-3.5 text-amber-400" /> : <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />}
+            <span>{isOffline ? 'Offline Cache' : 'Verified Paths'}</span>
           </div>
         </div>
 

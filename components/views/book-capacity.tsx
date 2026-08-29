@@ -30,8 +30,11 @@ export function BookCapacityView() {
     createShipment,
     currentProfile,
     courierCompanies,
-    setActiveTab
+    setActiveTab,
+    backendStatus,
   } = useCargoFlow();
+
+  const isOffline = backendStatus === 'SIMULATED_OFFLINE';
 
   const [originStopId, setOriginStopId] = useState<string>('STP001'); // Nashik CBS
   const [destinationStopId, setDestinationStopId] = useState<string>('STP030'); // Pune Shivajinagar
@@ -88,12 +91,12 @@ export function BookCapacityView() {
   const originStop = stops.find(s => s.id === originStopId);
   const destinationStop = stops.find(s => s.id === destinationStopId);
 
-  const handleBookingConfirm = () => {
+  const handleBookingConfirm = async () => {
     if (!selectedMatch) return;
     setIsReserving(true);
 
-    setTimeout(() => {
-      const shipment = createShipment({
+    try {
+      const shipment = await createShipment({
         courierCompanyId: currentCompany.id,
         courierCompanyName: currentCompany.name,
         senderName,
@@ -111,8 +114,11 @@ export function BookCapacityView() {
       });
 
       setCreatedShipment(shipment);
+    } catch (e) {
+      console.error('Booking failed:', e);
+    } finally {
       setIsReserving(false);
-    }, 600);
+    }
   };
 
   return (
@@ -400,12 +406,24 @@ export function BookCapacityView() {
         <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 lg:p-8 shadow-2xl border border-slate-200 space-y-6">
             <div className="text-center space-y-2">
-              <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+              <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto ${
+                isOffline ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-emerald-100 text-emerald-600'
+              }`}>
                 <CheckCircle2 className="w-8 h-8" />
               </div>
-              <h3 className="text-xl font-bold text-slate-900">Waybill Reserved Successfully!</h3>
+              <h3 className="text-xl font-bold text-slate-900">
+                {isOffline ? '✓ Saved on this device' : 'Waybill Reserved Successfully!'}
+              </h3>
               <p className="text-xs text-slate-500">
-                Capacity has been deducted from MSRTC Bus Trip <strong>{createdShipment.tripId}</strong>.
+                {isOffline ? (
+                  <span className="text-amber-800 font-medium">
+                    Pending synchronization · Primary datastore is unavailable, so this shipment is protected locally and will sync upon restoration.
+                  </span>
+                ) : (
+                  <span>
+                    Capacity has been deducted from MSRTC Bus Trip <strong>{createdShipment.tripId}</strong> and committed to central datastore.
+                  </span>
+                )}
               </p>
             </div>
 

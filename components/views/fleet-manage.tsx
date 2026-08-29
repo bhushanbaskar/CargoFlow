@@ -2,28 +2,40 @@
 
 import React, { useState } from 'react';
 import { useCargoFlow } from '@/components/context/cargoflow-context';
-import { Bus as BusIcon, Building2, MapPin, Plus, Search } from 'lucide-react';
+import { Bus as BusIcon, Building2, MapPin, Plus, Search, HardDrive, CheckCircle2 } from 'lucide-react';
 
 export function FleetManageView() {
-  const { buses, depots, stops, routes } = useCargoFlow();
+  const { buses, depots, stops, routes, backendStatus } = useCargoFlow();
+  const isOffline = backendStatus === 'SIMULATED_OFFLINE';
+
   const [activeSubTab, setActiveSubTab] = useState<'BUSES' | 'DEPOTS' | 'ROUTES'>('BUSES');
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredBuses = buses.filter(
-    b =>
+    (b) =>
       b.registration.toLowerCase().includes(searchQuery.toLowerCase()) ||
       b.busType.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-7xl mx-auto px-4 py-8 space-y-6 font-sans">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight font-sans">
-            MSRTC Fleet & Depot Inventory
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+              MSRTC Fleet & Depot Inventory
+            </h1>
+            {isOffline && (
+              <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-mono font-bold text-xs border border-amber-300 flex items-center gap-1">
+                <HardDrive className="w-3 h-3 text-amber-600" />
+                <span>Static Cache</span>
+              </span>
+            )}
+          </div>
           <p className="text-slate-500 text-xs mt-1">
-            Manage physical bus vehicles, cargo hold capacities, depots, and terminal stops.
+            {isOffline
+              ? 'Displaying local static cache for depots, routes, and physical assets.'
+              : 'Manage physical bus vehicles, cargo hold capacities, depots, and terminal stops.'}
           </p>
         </div>
 
@@ -31,7 +43,9 @@ export function FleetManageView() {
           <button
             onClick={() => setActiveSubTab('BUSES')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-              activeSubTab === 'BUSES' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700'
+              activeSubTab === 'BUSES'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-white border border-slate-200 text-slate-700'
             }`}
           >
             Buses ({buses.length})
@@ -39,7 +53,9 @@ export function FleetManageView() {
           <button
             onClick={() => setActiveSubTab('DEPOTS')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-              activeSubTab === 'DEPOTS' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700'
+              activeSubTab === 'DEPOTS'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-white border border-slate-200 text-slate-700'
             }`}
           >
             Depots ({depots.length})
@@ -47,7 +63,9 @@ export function FleetManageView() {
           <button
             onClick={() => setActiveSubTab('ROUTES')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-              activeSubTab === 'ROUTES' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700'
+              activeSubTab === 'ROUTES'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-white border border-slate-200 text-slate-700'
             }`}
           >
             Routes ({routes.length})
@@ -58,18 +76,25 @@ export function FleetManageView() {
       {activeSubTab === 'BUSES' && (
         <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold text-slate-900 text-base">MSRTC Bus Fleet Register</h2>
+            <div>
+              <h2 className="font-bold text-slate-900 text-base">MSRTC Bus Fleet Register</h2>
+              {isOffline && (
+                <p className="text-[11px] text-amber-700 font-mono">
+                  Static vehicle register cached · Live GPS & hardware telemetry offline
+                </p>
+              )}
+            </div>
             <input
               type="text"
               placeholder="Search registration..."
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-900"
             />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredBuses.map(bus => (
+            {filteredBuses.map((bus) => (
               <div key={bus.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-sm font-bold text-slate-900 bg-white px-2.5 py-1 rounded border border-slate-200">
@@ -92,14 +117,22 @@ export function FleetManageView() {
 
       {activeSubTab === 'DEPOTS' && (
         <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-xs space-y-4">
-          <h2 className="font-bold text-slate-900 text-base">Operational Depots (Nashik Division)</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-slate-900 text-base">Operational Depots (Nashik Division)</h2>
+            <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" />
+              <span>Available offline (Static Cache)</span>
+            </span>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {depots.map(depot => {
-              const stop = stops.find(s => s.id === depot.stopId);
+            {depots.map((depot) => {
+              const stop = stops.find((s) => s.id === depot.stopId);
               return (
                 <div key={depot.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
                   <div className="font-bold text-slate-900 text-sm">{depot.name}</div>
-                  <div className="text-xs text-slate-500 font-mono">ID: {depot.id} • Terminal: {stop?.name || depot.stopId}</div>
+                  <div className="text-xs text-slate-500 font-mono">
+                    ID: {depot.id} • Terminal: {stop?.name || depot.stopId}
+                  </div>
                 </div>
               );
             })}
@@ -109,13 +142,24 @@ export function FleetManageView() {
 
       {activeSubTab === 'ROUTES' && (
         <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-xs space-y-4">
-          <h2 className="font-bold text-slate-900 text-base">Active Scheduled Bus Routes</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-slate-900 text-base">Active Scheduled Bus Routes</h2>
+            <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" />
+              <span>Available offline (Static Cache)</span>
+            </span>
+          </div>
           <div className="space-y-2">
-            {routes.map(r => (
-              <div key={r.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
+            {routes.map((r) => (
+              <div
+                key={r.id}
+                className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs"
+              >
                 <div>
                   <strong className="text-slate-900 font-bold">{r.name}</strong>
-                  <span className="text-slate-500 text-[11px] block font-mono">{r.id} • {r.intermediateStopIds.length} intermediate stop(s)</span>
+                  <span className="text-slate-500 text-[11px] block font-mono">
+                    {r.id} • {r.intermediateStopIds.length} intermediate stop(s)
+                  </span>
                 </div>
                 <span className="text-blue-600 font-semibold text-[11px]">Division: Nashik</span>
               </div>

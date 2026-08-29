@@ -279,7 +279,178 @@ export const DEMO_USER_PROFILES: UserProfile[] = [
   }
 ];
 
+// Demo Simulation Constants
+export const DEMO_ACTIVE_TASK_ID = 'shp-482';
+export const DEMO_CACHED_TASK_ID = 'shp-470';
+export const DEMO_UNCACHED_TASK_IDS = ['shp-471', 'shp-472', 'shp-475'];
+
+export const DEMO_ACTIVE_SHIPMENT: Shipment = {
+  id: "shp-482",
+  waybillNumber: "WB-2026-KPG-0482",
+  courierCompanyId: "c0000000-0000-0000-0000-000000000001",
+  courierCompanyName: "BlueDart Express",
+  senderName: "Sahyadri Agro Export Hub (Nashik CBS)",
+  senderPhone: "+91 98221 44551",
+  receiverName: "Kopargaon APMC Mandi / Pune Agro Terminal",
+  receiverPhone: "+91 98901 22334",
+  originStopId: "STP001",
+  destinationStopId: "STP030",
+  weightKg: 120.0,
+  dimensionsCm: "80 x 60 x 50",
+  declaredValue: 65000,
+  status: "IN_TRANSIT",
+  qrCodeHash: "CF-QR-482-KP003-MH15BD1021",
+  tripId: "TRP001",
+  fareAmount: 1450,
+  createdAt: "2026-08-29T10:20:00.000Z",
+  statusHistory: [
+    {
+      status: "RESERVED",
+      timestamp: "2026-08-29T10:20:00.000Z",
+      location: "Nashik CBS Booking Bay",
+      remarks: "Task created & cargo reserved on Bus KP003 (Server confirmed)"
+    },
+    {
+      status: "LOADED",
+      timestamp: "2026-08-29T10:25:00.000Z",
+      location: "Nashik CBS Platform 4",
+      remarks: "Assigned & verified by Conductor Suresh Pawar (Server confirmed)"
+    },
+    {
+      status: "IN_TRANSIT",
+      timestamp: "2026-08-29T10:30:00.000Z",
+      location: "Nashik CBS Departure Gate",
+      remarks: "Pickup confirmed, departed toward Kopargaon APMC (Server confirmed)"
+    }
+  ]
+};
+
+export const DEMO_CACHED_SHIPMENT: Shipment = {
+  id: "shp-470",
+  waybillNumber: "WB-2026-NSH-0470",
+  courierCompanyId: "c0000000-0000-0000-0000-000000000002",
+  courierCompanyName: "Delhivery Logistics",
+  senderName: "Nashik Engineering Tools",
+  senderPhone: "+91 98220 99881",
+  receiverName: "Sangamner Industrial Hub",
+  receiverPhone: "+91 94220 11223",
+  originStopId: "STP001",
+  destinationStopId: "STP005",
+  weightKg: 45.0,
+  dimensionsCm: "50 x 40 x 30",
+  declaredValue: 32000,
+  status: "IN_TRANSIT",
+  qrCodeHash: "CF-QR-470-MH15BD1021",
+  tripId: "TRP001",
+  fareAmount: 520,
+  createdAt: "2026-08-29T08:15:00.000Z",
+  statusHistory: [
+    {
+      status: "RESERVED",
+      timestamp: "2026-08-29T08:15:00.000Z",
+      location: "Nashik CBS Depot",
+      remarks: "Initial reservation confirmed"
+    },
+    {
+      status: "IN_TRANSIT",
+      timestamp: "2026-08-29T10:18:00.000Z",
+      location: "Sinnar Toll Gate",
+      remarks: "Last synchronized checkpoint data (10:18 AM)"
+    }
+  ]
+};
+
+export const DEMO_BACKEND_ONLY_SHIPMENTS: Shipment[] = [
+  {
+    id: "shp-471",
+    waybillNumber: "WB-2026-PUN-0471",
+    courierCompanyId: "c0000000-0000-0000-0000-000000000001",
+    courierCompanyName: "BlueDart Express",
+    senderName: "Pune Precision Bearings",
+    senderPhone: "+91 98230 44556",
+    receiverName: "Nashik Auto Ancillary",
+    receiverPhone: "+91 98110 22334",
+    originStopId: "STP030",
+    destinationStopId: "STP001",
+    weightKg: 28.0,
+    dimensionsCm: "35 x 30 x 20",
+    declaredValue: 21000,
+    status: "DELIVERED",
+    qrCodeHash: "CF-QR-471-MH15GH1290",
+    tripId: "TRP006",
+    fareAmount: 410,
+    createdAt: "2026-08-26T09:30:00.000Z",
+    statusHistory: [
+      {
+        status: "DELIVERED",
+        timestamp: "2026-08-26T15:30:00.000Z",
+        location: "Nashik CBS Counter",
+        remarks: "Historical delivered record (Backend datastore only)"
+      }
+    ]
+  },
+  {
+    id: "shp-472",
+    waybillNumber: "WB-2026-AUR-0472",
+    courierCompanyId: "c0000000-0000-0000-0000-000000000003",
+    courierCompanyName: "DTDC Express India",
+    senderName: "Aurangabad Pharma Supplies",
+    senderPhone: "+91 97650 33441",
+    receiverName: "Nashik Civil Hospital Bay",
+    receiverPhone: "+91 94221 88990",
+    originStopId: "STP034",
+    destinationStopId: "STP002",
+    weightKg: 18.0,
+    dimensionsCm: "30 x 25 x 20",
+    declaredValue: 55000,
+    status: "DELIVERED",
+    qrCodeHash: "CF-QR-472-MH15SH4421",
+    tripId: "TRP003",
+    fareAmount: 380,
+    createdAt: "2026-08-25T11:00:00.000Z",
+    statusHistory: [
+      {
+        status: "DELIVERED",
+        timestamp: "2026-08-25T17:00:00.000Z",
+        location: "Nashik Mela Stand",
+        remarks: "Delivered parcel (Backend datastore only)"
+      }
+    ]
+  },
+  {
+    id: "shp-475",
+    waybillNumber: "WB-2026-MUM-0475",
+    courierCompanyId: "c0000000-0000-0000-0000-000000000001",
+    courierCompanyName: "BlueDart Express",
+    senderName: "Mumbai Electronics Hub",
+    senderPhone: "+91 98200 44332",
+    receiverName: "Nashik Telecom Repairs",
+    receiverPhone: "+91 98221 66554",
+    originStopId: "STP014",
+    destinationStopId: "STP003",
+    weightKg: 12.0,
+    dimensionsCm: "25 x 25 x 15",
+    declaredValue: 42000,
+    status: "DELIVERED",
+    qrCodeHash: "CF-QR-475-MH15BG5512",
+    tripId: "TRP005",
+    fareAmount: 290,
+    createdAt: "2026-08-24T14:00:00.000Z",
+    statusHistory: [
+      {
+        status: "DELIVERED",
+        timestamp: "2026-08-24T19:30:00.000Z",
+        location: "Mahamarg Nashik",
+        remarks: "Archived ledger entry (Backend datastore only)"
+      }
+    ]
+  }
+];
+
 export const INITIAL_SHIPMENTS: Shipment[] = [
+  DEMO_ACTIVE_SHIPMENT,
+  DEMO_CACHED_SHIPMENT,
+  ...DEMO_BACKEND_ONLY_SHIPMENTS,
   {
     id: "shp-1001",
     waybillNumber: "WB-2026-NSS-0891",

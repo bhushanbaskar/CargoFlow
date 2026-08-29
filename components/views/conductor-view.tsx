@@ -13,7 +13,11 @@ import {
   ArrowRight,
   ShieldCheck,
   AlertCircle,
-  Search
+  Search,
+  HardDrive,
+  AlertTriangle,
+  Send,
+  PlusCircle,
 } from 'lucide-react';
 
 export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean }) {
@@ -23,60 +27,110 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
     routes,
     shipments,
     updateShipmentStatus,
-    currentProfile
+    currentProfile,
+    backendStatus,
+    logConductorIncident,
   } = useCargoFlow();
+
+  const isOffline = backendStatus === 'SIMULATED_OFFLINE';
 
   // Conductor is assigned to Trip TRP001 (Bus MH-15-BD-1021)
   const assignedTrip = useMemo(() => {
-    return trips.find(t => t.id === 'TRP001') || trips[0];
+    return trips.find((t) => t.id === 'TRP001') || trips[0];
   }, [trips]);
 
-  const assignedBus = buses.find(b => b.id === assignedTrip?.busId);
-  const assignedRoute = routes.find(r => r.id === assignedTrip?.routeId);
-  const assignedShipments = shipments.filter(s => s.tripId === assignedTrip?.id);
+  const assignedBus = buses.find((b) => b.id === assignedTrip?.busId);
+  const assignedRoute = routes.find((r) => r.id === assignedTrip?.routeId);
+  const assignedShipments = shipments.filter((s) => s.tripId === assignedTrip?.id);
 
   const [scanInput, setScanInput] = useState<string>('');
-  const [activeTabSub, setActiveTabSub] = useState<'LIST' | 'SCAN'>(isScannerTab ? 'SCAN' : 'LIST');
+  const [activeTabSub, setActiveTabSub] = useState<'LIST' | 'SCAN' | 'INCIDENT'>(isScannerTab ? 'SCAN' : 'LIST');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const handleScanSubmit = (e: React.FormEvent) => {
+  // Incident form state
+  const [incidentTitle, setIncidentTitle] = useState('Traffic Congestion Delay (NH-60)');
+  const [incidentType, setIncidentType] = useState<'DELAY' | 'ROAD_BLOCK' | 'CAPACITY_OVERFLOW' | 'DAMAGE_INSPECTION'>('DELAY');
+  const [incidentNotes, setIncidentNotes] = useState('30 min highway diversion near Sangamner toll plaza.');
+
+  const handleScanSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!scanInput) return;
 
     // Find shipment by waybill # or QR hash
     const match = shipments.find(
-      s =>
+      (s) =>
         s.waybillNumber.toLowerCase() === scanInput.trim().toLowerCase() ||
-        s.qrCodeHash.toLowerCase() === scanInput.trim().toLowerCase()
+        s.qrCodeHash.toLowerCase() === scanInput.trim().toLowerCase() ||
+        s.id.toLowerCase() === scanInput.trim().toLowerCase()
     );
 
     if (match) {
       const nextStatus = match.status === 'RESERVED' ? 'LOADED' : 'DELIVERED';
-      updateShipmentStatus(match.id, nextStatus, `Scanned & processed by Conductor ${currentProfile.fullName}`);
-      setSuccessMessage(`Waybill ${match.waybillNumber} updated to ${nextStatus}!`);
+      await updateShipmentStatus(
+        match.id,
+        nextStatus,
+        `Scanned & processed by Conductor ${currentProfile.fullName}`
+      );
+      setSuccessMessage(
+        `Waybill ${match.waybillNumber} marked as ${nextStatus}! ${
+          isOffline ? '(Saved locally on device)' : '(Server confirmed)'
+        }`
+      );
       setScanInput('');
-      setTimeout(() => setSuccessMessage(null), 4000);
+      setTimeout(() => setSuccessMessage(null), 4500);
     } else {
       alert(`Waybill or QR hash '${scanInput}' not found on active trip roster.`);
     }
   };
 
+  const handleLogIncidentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!incidentTitle.trim()) return;
+
+    await logConductorIncident({
+      title: incidentTitle,
+      type: incidentType,
+      notes: incidentNotes,
+      conductorName: currentProfile.fullName,
+      depotLocation: currentProfile.depotName || 'Nashik CBS Depot',
+      tripId: assignedTrip?.id,
+    });
+
+    setSuccessMessage(
+      `Operational note logged! ${isOffline ? '(Protected locally on this device)' : '(Server confirmed)'}`
+    );
+    setActiveTabSub('LIST');
+    setTimeout(() => setSuccessMessage(null), 4000);
+  };
+
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-4xl mx-auto px-4 py-8 space-y-6 font-sans">
       
       {/* Conductor Badge Header */}
       <div className="bg-gradient-to-r from-amber-900 via-slate-900 to-amber-950 text-white rounded-3xl p-6 shadow-xl border border-amber-800/60 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono text-xs font-semibold border border-amber-400/30 flex items-center gap-1">
               <Smartphone className="w-3.5 h-3.5 text-amber-400" />
-              Conductor Terminal Interface
+              Conductor Handheld Terminal
             </span>
+
+            {isOffline ? (
+              <span className="px-2.5 py-0.5 rounded-full bg-amber-500/30 text-amber-200 font-mono text-xs font-bold border border-amber-400/50 flex items-center gap-1">
+                <HardDrive className="w-3 h-3 text-amber-300" />
+                <span>Continuity Active (Offline)</span>
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-[11px] font-bold border border-emerald-500/30">
+                Online Sync
+              </span>
+            )}
+
             <span className="text-xs text-amber-200/70 font-mono">Nashik CBS Depot</span>
           </div>
 
           <h1 className="text-2xl font-extrabold text-white font-sans">
-            {assignedBus?.registration || 'MH-15-BD-1021'} Cargo Hold Roster
+            {assignedBus?.registration || 'MH-15-BD-1021'} Cargo Hold Manifest
           </h1>
           <p className="text-slate-300 text-xs">
             Assigned Conductor: <strong>{currentProfile.fullName}</strong> • Trip ID: <strong>{assignedTrip?.id}</strong>
@@ -93,7 +147,7 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
       </div>
 
       {/* Mode Tabs */}
-      <div className="flex items-center gap-2 bg-slate-200/80 p-1 rounded-2xl max-w-md mx-auto border border-slate-300">
+      <div className="flex items-center gap-2 bg-slate-200/80 p-1 rounded-2xl max-w-lg mx-auto border border-slate-300">
         <button
           onClick={() => setActiveTabSub('LIST')}
           className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${
@@ -102,7 +156,7 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          Assigned Parcels ({assignedShipments.length})
+          Hold Manifest ({assignedShipments.length})
         </button>
 
         <button
@@ -114,7 +168,19 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
           }`}
         >
           <QrCode className="w-4 h-4" />
-          QR Scanner Verification
+          QR Scan & Load
+        </button>
+
+        <button
+          onClick={() => setActiveTabSub('INCIDENT')}
+          className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+            activeTabSub === 'INCIDENT'
+              ? 'bg-zinc-900 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+          Route Log
         </button>
       </div>
 
@@ -122,7 +188,7 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
       {successMessage && (
         <div className="bg-emerald-50 text-emerald-900 border border-emerald-200 p-4 rounded-2xl flex items-center gap-3 text-xs font-bold animate-in fade-in">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-          {successMessage}
+          <span>{successMessage}</span>
         </div>
       )}
 
@@ -135,7 +201,7 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
             </div>
             <h2 className="text-xl font-bold text-slate-900">Waybill QR Scanner</h2>
             <p className="text-slate-500 text-xs">
-              Scan parcel QR barcode or manually type the waybill number to mark cargo as <strong>LOADED</strong> into bus hold or <strong>DELIVERED</strong> at destination depot.
+              Scan parcel QR barcode or select a waybill below to update state. Fully operational during database failure.
             </p>
           </div>
 
@@ -147,14 +213,14 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="e.g. WB-2026-NSS-0891 or CF-QR-891"
+                  placeholder="e.g. WB-2026-KPG-0482 or CF-QR-482"
                   value={scanInput}
-                  onChange={e => setScanInput(e.target.value)}
+                  onChange={(e) => setScanInput(e.target.value)}
                   className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm font-mono font-bold text-slate-900 focus:border-amber-600 outline-none"
                 />
                 <button
                   type="submit"
-                  className="absolute right-2 top-2 bottom-2 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs"
+                  className="absolute right-2 top-2 bottom-2 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs cursor-pointer"
                 >
                   Verify QR
                 </button>
@@ -166,18 +232,74 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
                 Quick Scan Demo Shortcuts
               </span>
               <div className="flex flex-wrap justify-center gap-2 mt-2">
-                {assignedShipments.map(s => (
+                {assignedShipments.map((s) => (
                   <button
                     key={s.id}
                     type="button"
                     onClick={() => setScanInput(s.waybillNumber)}
-                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 text-[11px] font-mono font-bold transition-colors"
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 text-[11px] font-mono font-bold transition-colors cursor-pointer"
                   >
                     {s.waybillNumber} ({s.status})
                   </button>
                 ))}
               </div>
             </div>
+          </form>
+        </div>
+      ) : activeTabSub === 'INCIDENT' ? (
+        <div className="bg-white rounded-3xl p-6 lg:p-8 border border-slate-200 shadow-sm space-y-6">
+          <div className="space-y-1">
+            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
+              <span>Log Route Incident / Handheld Delay Note</span>
+            </h2>
+            <p className="text-slate-500 text-xs">
+              Conductors can log en-route traffic incidents or seal verifications. Stored locally if offline.
+            </p>
+          </div>
+
+          <form onSubmit={handleLogIncidentSubmit} className="space-y-4 max-w-lg">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">INCIDENT CATEGORY</label>
+              <select
+                value={incidentType}
+                onChange={(e) => setIncidentType(e.target.value as any)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900"
+              >
+                <option value="DELAY">Traffic Congestion / Highway Delay</option>
+                <option value="ROAD_BLOCK">Road Diversion / Weather</option>
+                <option value="DAMAGE_INSPECTION">Cargo Seal Inspection</option>
+                <option value="CAPACITY_OVERFLOW">Luggage Hold Overflow</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">INCIDENT TITLE</label>
+              <input
+                type="text"
+                value={incidentTitle}
+                onChange={(e) => setIncidentTitle(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">CONDUCTOR REMARKS</label>
+              <textarea
+                rows={3}
+                value={incidentNotes}
+                onChange={(e) => setIncidentNotes(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="px-5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Record Incident Log</span>
+            </button>
           </form>
         </div>
       ) : (
@@ -194,7 +316,7 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
               No parcels currently assigned to this bus trip.
             </div>
           ) : (
-            assignedShipments.map(shp => (
+            assignedShipments.map((shp) => (
               <div
                 key={shp.id}
                 className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-3"
@@ -208,6 +330,11 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
                         {shp.status}
                       </span>
+                      {isOffline && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-mono">
+                          Protected
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-slate-500 font-medium">
                       {shp.courierCompanyName} • Weight: <strong className="text-slate-900">{shp.weightKg} kg</strong>
@@ -220,44 +347,64 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
                   </div>
                 </div>
 
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-center justify-between text-xs">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-center justify-between text-xs flex-wrap gap-2">
                   <div>
                     <span className="text-[10px] text-slate-400 block font-bold">RECEIVER</span>
                     <strong className="text-slate-900">{shp.receiverName}</strong> ({shp.receiverPhone})
                   </div>
 
-                  {shp.status === 'RESERVED' && (
-                    <button
-                      onClick={() => updateShipmentStatus(shp.id, 'LOADED', `Loaded by Conductor ${currentProfile.fullName}`)}
-                      className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-xs"
-                    >
-                      Mark LOADED
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {shp.status === 'RESERVED' && (
+                      <button
+                        onClick={() =>
+                          updateShipmentStatus(
+                            shp.id,
+                            'LOADED',
+                            `Loaded by Conductor ${currentProfile.fullName}`
+                          )
+                        }
+                        className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-xs cursor-pointer"
+                      >
+                        Mark LOADED
+                      </button>
+                    )}
 
-                  {shp.status === 'LOADED' && (
-                    <button
-                      onClick={() => updateShipmentStatus(shp.id, 'IN_TRANSIT', `En-route bus departure`)}
-                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs"
-                    >
-                      Depart (EN-ROUTE)
-                    </button>
-                  )}
+                    {shp.status === 'LOADED' && (
+                      <button
+                        onClick={() =>
+                          updateShipmentStatus(
+                            shp.id,
+                            'IN_TRANSIT',
+                            `En-route bus departure from station`
+                          )
+                        }
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs cursor-pointer"
+                      >
+                        Depart (EN-ROUTE)
+                      </button>
+                    )}
 
-                  {shp.status === 'IN_TRANSIT' && (
-                    <button
-                      onClick={() => updateShipmentStatus(shp.id, 'DELIVERED', `Handed over to consignee`)}
-                      className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs"
-                    >
-                      Mark DELIVERED
-                    </button>
-                  )}
+                    {shp.status === 'IN_TRANSIT' && (
+                      <button
+                        onClick={() =>
+                          updateShipmentStatus(
+                            shp.id,
+                            'DELIVERED',
+                            `Handed over to consignee by Conductor ${currentProfile.fullName}`
+                          )
+                        }
+                        className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs cursor-pointer"
+                      >
+                        Mark DELIVERED
+                      </button>
+                    )}
 
-                  {shp.status === 'DELIVERED' && (
-                    <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
-                      <CheckCircle2 className="w-4 h-4" /> Delivered
-                    </span>
-                  )}
+                    {shp.status === 'DELIVERED' && (
+                      <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                        <CheckCircle2 className="w-4 h-4" /> Delivered
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             ))
