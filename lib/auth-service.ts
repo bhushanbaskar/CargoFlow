@@ -1,4 +1,5 @@
-import { getSupabase } from './supabase';
+import { getSupabase, isSupabaseConfigured } from './supabase';
+import { INITIAL_COURIER_COMPANIES } from './mock-data';
 import {
   UserProfile,
   CourierCompany,
@@ -193,13 +194,16 @@ export async function signOutAuth(): Promise<void> {
 
 export async function fetchAllCourierCompanies(): Promise<CourierCompany[]> {
   try {
+    if (!isSupabaseConfigured) {
+      return INITIAL_COURIER_COMPANIES;
+    }
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('courier_companies')
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (!error && data) {
+    if (!error && data && data.length > 0) {
       return data.map((c: any) => ({
         id: c.id,
         name: c.name,
@@ -219,10 +223,10 @@ export async function fetchAllCourierCompanies(): Promise<CourierCompany[]> {
         updatedAt: c.updated_at,
       }));
     }
-    return [];
+    return INITIAL_COURIER_COMPANIES;
   } catch (err: any) {
-    console.error('Fetch companies error:', err);
-    return [];
+    console.warn('Fetch companies notice (falling back to default companies):', err.message);
+    return INITIAL_COURIER_COMPANIES;
   }
 }
 

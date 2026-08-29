@@ -1,6 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { interpolatePositionAlongRoad } from '@/lib/routing-service';
+import PRECOMPUTED_ROUTES from '@/lib/precomputed-routes.json';
 import {
   UserRole,
   UserProfile,
@@ -22,6 +24,7 @@ import {
   INITIAL_BUSES,
   INITIAL_SCHEDULED_TRIPS,
   INITIAL_SHIPMENTS,
+  INITIAL_COURIER_COMPANIES,
   DEMO_USER_PROFILES,
 } from '@/lib/mock-data';
 import {
@@ -97,7 +100,7 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
   const [buses] = useState<Bus[]>(INITIAL_BUSES);
   const [trips, setTrips] = useState<ScheduledTrip[]>(INITIAL_SCHEDULED_TRIPS);
   const [shipments, setShipments] = useState<Shipment[]>(INITIAL_SHIPMENTS);
-  const [courierCompanies, setCourierCompanies] = useState<CourierCompany[]>([]);
+  const [courierCompanies, setCourierCompanies] = useState<CourierCompany[]>(INITIAL_COURIER_COMPANIES);
 
   const [isSimulating, setIsSimulating] = useState<boolean>(true);
   const [selectedTripId, setSelectedTripId] = useState<string | null>('TRP001');
@@ -355,29 +358,53 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Realtime bus GPS jitter animation simulator
+  // Track simulation progress along road paths (0 = origin, 1 = destination)
+  const tripProgressRef = useRef<{ [tripId: string]: number }>({
+    TRP001: 0.35,
+    TRP003: 0.52,
+    TRP005: 0.65,
+    TRP006: 0.40,
+    TRP008: 0.28,
+    TRP010: 0.72,
+    TRP013: 0.45,
+    TRP014: 0.58,
+    TRP015: 0.60
+  });
+
+  // Realtime vehicle simulation advancing along physical road geometry
   useEffect(() => {
     if (!isSimulating) return;
 
     const interval = setInterval(() => {
       setTrips(prevTrips =>
         prevTrips.map(trip => {
-          if (trip.tripStatus === 'IN_TRANSIT' && trip.currentLocation) {
-            const latDelta = (Math.random() - 0.48) * 0.0015;
-            const lngDelta = (Math.random() - 0.48) * 0.0015;
-            return {
-              ...trip,
-              currentLocation: {
-                ...trip.currentLocation,
-                latitude: Number((trip.currentLocation.latitude + latDelta).toFixed(6)),
-                longitude: Number((trip.currentLocation.longitude + lngDelta).toFixed(6))
-              }
-            };
+          if (trip.tripStatus === 'IN_TRANSIT') {
+            const precomputed = (PRECOMPUTED_ROUTES as Record<string, any>)[trip.routeId];
+            if (precomputed && precomputed.coordinates && precomputed.coordinates.length > 0) {
+              const currentProgress = tripProgressRef.current[trip.id] ?? 0.35;
+              // Advance 0.4% along the highway path per tick, wrap around when route finishes
+              const nextProgress = currentProgress >= 0.95 ? 0.05 : currentProgress + 0.004;
+              tripProgressRef.current[trip.id] = nextProgress;
+
+              const [lat, lng] = interpolatePositionAlongRoad(
+                precomputed.coordinates,
+                nextProgress
+              );
+
+              return {
+                ...trip,
+                currentLocation: {
+                  latitude: lat,
+                  longitude: lng,
+                  betweenStopIds: trip.currentLocation?.betweenStopIds || ['STP001', 'STP004']
+                }
+              };
+            }
           }
           return trip;
         })
       );
-    }, 4000);
+    }, 2500);
 
     return () => clearInterval(interval);
   }, [isSimulating]);

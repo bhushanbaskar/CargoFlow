@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useCargoFlow } from '@/components/context/cargoflow-context';
 import { Stop, Route, ScheduledTrip, Bus } from '@/lib/types';
+import PRECOMPUTED_ROUTES from '@/lib/precomputed-routes.json';
 import {
   Bus as BusIcon,
   MapPin,
@@ -228,10 +229,19 @@ export function FleetMapView() {
                   </div>
 
                   {/* Route Name with Arrow */}
-                  <div className="flex items-center gap-1.5 font-bold text-xs my-1">
-                    <span>{srcStop?.name || 'Origin'}</span>
-                    <ArrowRight className={`w-3.5 h-3.5 ${isSelected ? 'text-lime-300' : 'text-zinc-400'}`} />
-                    <span>{destStop?.name || 'Destination'}</span>
+                  <div className="flex items-center justify-between my-1">
+                    <div className="flex items-center gap-1.5 font-bold text-xs">
+                      <span>{srcStop?.name || 'Origin'}</span>
+                      <ArrowRight className={`w-3.5 h-3.5 ${isSelected ? 'text-lime-300' : 'text-zinc-400'}`} />
+                      <span>{destStop?.name || 'Destination'}</span>
+                    </div>
+                    {route && (PRECOMPUTED_ROUTES as Record<string, any>)[route.id] && (
+                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded-md font-bold ${
+                        isSelected ? 'bg-zinc-800 text-lime-300' : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        {(PRECOMPUTED_ROUTES as Record<string, any>)[route.id].distanceKm} km
+                      </span>
+                    )}
                   </div>
 
                   <div className={`text-[11px] font-mono mt-1 ${isSelected ? 'text-zinc-300' : 'text-zinc-500'}`}>

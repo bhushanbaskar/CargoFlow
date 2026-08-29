@@ -7,8 +7,15 @@ import { Receipt, Building2, CheckCircle2, Clock, DollarSign, CreditCard } from 
 export function InvoicesView() {
   const { shipments, courierCompanies, currentProfile } = useCargoFlow();
 
-  const company = courierCompanies.find(c => c.id === currentProfile.companyId) || courierCompanies[0];
-  const companyShipments = shipments.filter(s => s.courierCompanyId === company.id);
+  const company = courierCompanies.find(c => c.id === currentProfile.companyId) || courierCompanies[0] || {
+    id: 'c0000000-0000-0000-0000-000000000001',
+    name: 'BlueDart Express',
+    legalName: 'Blue Dart Express Limited',
+    code: 'BLUEDART',
+    creditLimit: 250000,
+    usedCredit: 34500,
+  };
+  const companyShipments = shipments.filter(s => s.courierCompanyId === company?.id);
 
   const [invoices, setInvoices] = useState([
     { id: 'INV-2026-001', waybill: 'WB-2026-NSS-0891', amount: 450, date: '2026-08-01', status: 'PAID' },
@@ -28,14 +35,14 @@ export function InvoicesView() {
             Invoices & Credit Billing Account
           </h1>
           <p className="text-slate-500 text-xs mt-1">
-            Automated waybill billing account for <strong>{company.name}</strong>.
+            Automated waybill billing account for <strong>{company?.name || 'Courier Partner'}</strong>.
           </p>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-slate-200 text-right font-mono text-xs">
           <div className="text-slate-400">Available Credit Balance</div>
           <div className="text-xl font-bold text-emerald-600">
-            ₹{(company.creditLimit - company.usedCredit).toLocaleString('en-IN')}
+            ₹{((company?.creditLimit ?? 100000) - (company?.usedCredit ?? 0)).toLocaleString('en-IN')}
           </div>
         </div>
       </div>

@@ -52,7 +52,19 @@ export function BookCapacityView() {
   const currentCompany = useMemo(() => {
     return (
       courierCompanies.find(c => c.id === currentProfile.companyId) ||
-      courierCompanies[0]
+      courierCompanies[0] ||
+      {
+        id: 'c0000000-0000-0000-0000-000000000001',
+        name: 'BlueDart Express',
+        legalName: 'Blue Dart Express Limited',
+        code: 'BLUEDART',
+        contactEmail: 'dispatch@bluedart.com',
+        contactPhone: '+91 98230 11223',
+        creditLimit: 250000,
+        usedCredit: 34500,
+        status: 'ACTIVE' as const,
+        createdAt: '2026-08-01T10:00:00Z',
+      }
     );
   }, [courierCompanies, currentProfile]);
 
@@ -126,13 +138,13 @@ export function BookCapacityView() {
 
         <div className="bg-zinc-800/90 backdrop-blur-md p-4 rounded-2xl border border-zinc-700/80 shrink-0 space-y-1 text-right">
           <div className="text-[11px] text-zinc-400 font-semibold uppercase tracking-wider">
-            {currentCompany.name} Credit
+            {currentCompany?.name || 'Partner'} Credit
           </div>
           <div className="text-xl font-mono font-bold text-lime-300">
-            ₹{(currentCompany.creditLimit - currentCompany.usedCredit).toLocaleString('en-IN')}
+            ₹{((currentCompany?.creditLimit ?? 100000) - (currentCompany?.usedCredit ?? 0)).toLocaleString('en-IN')}
           </div>
           <div className="text-[10px] text-zinc-400">
-            Limit: ₹{currentCompany.creditLimit.toLocaleString('en-IN')}
+            Limit: ₹{(currentCompany?.creditLimit ?? 100000).toLocaleString('en-IN')}
           </div>
         </div>
       </div>
