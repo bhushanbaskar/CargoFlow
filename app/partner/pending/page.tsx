@@ -17,8 +17,9 @@ export default function PartnerPendingPage() {
   };
 
   const handleDemoApprove = async () => {
-    if (currentCompany?.id) {
-      await approveCompany(currentCompany.id);
+    const targetCompanyId = currentCompany?.id || currentProfile?.companyId;
+    if (targetCompanyId) {
+      await approveCompany(targetCompanyId);
       await refreshCompanies();
       router.push('/partner/dashboard');
     }

@@ -32,6 +32,7 @@ import {
   fetchAllCourierCompanies,
   updateCourierCompanyStatus,
 } from '@/lib/auth-service';
+import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 
 interface CargoFlowContextType {
   currentRole: UserRole;
@@ -117,7 +118,7 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
           // Default to demo admin profile for initial guest state if not explicitly signed out
           setCurrentProfile(DEMO_USER_PROFILES[0]);
           setCurrentRole('SUPER_ADMIN');
-          setIsAuthenticated(true);
+          setIsAuthenticated(false);
         }
 
         const companiesList = await fetchAllCourierCompanies();
@@ -130,6 +131,33 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
     }
 
     loadInitialData();
+
+    // Listen to Supabase auth events (sign in, sign out, token refresh)
+    if (isSupabaseConfigured) {
+      try {
+        const supabase = getSupabase();
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+            const authSession = await getCurrentAuthSession();
+            if (authSession) {
+              setCurrentProfile(authSession.user);
+              setCurrentRole(authSession.user.role);
+              setCurrentCompany(authSession.company || null);
+              setIsAuthenticated(true);
+            }
+          } else if (event === 'SIGNED_OUT') {
+            setIsAuthenticated(false);
+            setCurrentCompany(null);
+          }
+        });
+
+        return () => {
+          subscription.unsubscribe();
+        };
+      } catch (e) {
+        console.error('Supabase auth state listener error:', e);
+      }
+    }
   }, []);
 
   const refreshCompanies = async () => {
@@ -200,24 +228,47 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
   };
 
   const approveCompany = async (companyId: string) => {
-    await updateCourierCompanyStatus(companyId, 'ACTIVE');
-    await refreshCompanies();
+    // 1. Optimistic immediate local state update so UI reacts in 0ms
+    setCourierCompanies((prev) =>
+      prev.map((c) =>
+        c.id === companyId ? { ...c, status: 'ACTIVE' as const, rejectionReason: undefined } : c
+      )
+    );
 
-    // If current logged-in company matches, update current state
     if (currentCompany && currentCompany.id === companyId) {
-      setCurrentCompany({ ...currentCompany, status: 'ACTIVE' });
-      setCurrentProfile({ ...currentProfile, companyStatus: 'ACTIVE' });
+      setCurrentCompany((prev) => (prev ? { ...prev, status: 'ACTIVE', rejectionReason: undefined } : null));
+      setCurrentProfile((prev) => ({ ...prev, companyStatus: 'ACTIVE' }));
     }
+
+    // 2. Persist to database
+    try {
+      await updateCourierCompanyStatus(companyId, 'ACTIVE');
+    } catch (e) {
+      console.error('Failed to update company status in database:', e);
+    }
+    await refreshCompanies();
   };
 
   const rejectCompany = async (companyId: string, reason?: string) => {
-    await updateCourierCompanyStatus(companyId, 'REJECTED', reason);
-    await refreshCompanies();
+    // 1. Optimistic immediate local state update
+    setCourierCompanies((prev) =>
+      prev.map((c) =>
+        c.id === companyId ? { ...c, status: 'REJECTED' as const, rejectionReason: reason } : c
+      )
+    );
 
     if (currentCompany && currentCompany.id === companyId) {
-      setCurrentCompany({ ...currentCompany, status: 'REJECTED', rejectionReason: reason });
-      setCurrentProfile({ ...currentProfile, companyStatus: 'REJECTED' });
+      setCurrentCompany((prev) => (prev ? { ...prev, status: 'REJECTED', rejectionReason: reason } : null));
+      setCurrentProfile((prev) => ({ ...prev, companyStatus: 'REJECTED' }));
     }
+
+    // 2. Persist to database
+    try {
+      await updateCourierCompanyStatus(companyId, 'REJECTED', reason);
+    } catch (e) {
+      console.error('Failed to reject company in database:', e);
+    }
+    await refreshCompanies();
   };
 
   // Create Shipment Function

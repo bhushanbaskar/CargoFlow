@@ -13,22 +13,24 @@ export async function getCurrentAuthSession(): Promise<AuthSession | null> {
     const { data: { session }, error } = await supabase.auth.getSession();
     if (error || !session?.user) return null;
 
+    const user = session.user;
+
     // Fetch profile from database
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
-      .eq('id', session.user.id)
-      .single();
-
-    if (!profile) return null;
+      .eq('id', user.id)
+      .maybeSingle();
 
     let company: CourierCompany | undefined = undefined;
-    if (profile.company_id) {
+    const companyId = profile?.company_id || user.user_metadata?.company_id;
+
+    if (companyId) {
       const { data: companyData } = await supabase
         .from('courier_companies')
         .select('*')
-        .eq('id', profile.company_id)
-        .single();
+        .eq('id', companyId)
+        .maybeSingle();
 
       if (companyData) {
         company = {
@@ -44,22 +46,26 @@ export async function getCurrentAuthSession(): Promise<AuthSession | null> {
           city: companyData.city,
           state: companyData.state,
           gstin: companyData.gstin,
-          status: companyData.status as CompanyStatus,
+          status: (companyData.status as CompanyStatus) || 'PENDING',
           rejectionReason: companyData.rejection_reason,
           createdAt: companyData.created_at,
+          updatedAt: companyData.updated_at,
         };
       }
     }
 
+    const role = profile?.role || user.user_metadata?.role || 'COURIER_PARTNER';
+    const fullName = profile?.full_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
+
     const userObj: UserProfile = {
-      id: profile.id,
-      email: session.user.email || profile.email,
-      fullName: profile.full_name,
-      role: profile.role,
-      companyId: profile.company_id,
-      companyName: company?.name || profile.company_name,
+      id: user.id,
+      email: user.email || profile?.email || '',
+      fullName,
+      role,
+      companyId: company?.id || profile?.company_id,
+      companyName: company?.name,
       companyStatus: company?.status,
-      depotId: profile.depot_id,
+      depotId: profile?.depot_id,
     };
 
     return { user: userObj, company };
@@ -75,22 +81,39 @@ export async function loginWithEmailPassword(
 ): Promise<{ session: AuthSession | null; error?: string }> {
   try {
     const supabase = getSupabase();
+    const cleanEmail = email.trim().toLowerCase();
     
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
+      email: cleanEmail,
       password: pass,
     });
 
     if (error) {
+      if (error.message.toLowerCase().includes('invalid login credentials')) {
+        return { session: null, error: 'Invalid email or password. Please check your credentials.' };
+      }
+      if (error.message.toLowerCase().includes('email not confirmed')) {
+        return { session: null, error: 'Please confirm your email address or re-register.' };
+      }
       return { session: null, error: error.message };
     }
 
     if (data.session) {
       const session = await getCurrentAuthSession();
       if (session) return { session };
+      
+      // Fallback construct if profile fetch takes a moment
+      const userMeta = data.session.user.user_metadata || {};
+      const fallbackUser: UserProfile = {
+        id: data.session.user.id,
+        email: cleanEmail,
+        fullName: userMeta.full_name || cleanEmail.split('@')[0],
+        role: userMeta.role || 'COURIER_PARTNER',
+      };
+      return { session: { user: fallbackUser } };
     }
     
-    return { session: null, error: 'Login failed.' };
+    return { session: null, error: 'Sign in failed. No active session returned.' };
   } catch (err: any) {
     return { session: null, error: err.message || 'An unexpected error occurred.' };
   }
@@ -100,108 +123,62 @@ export async function registerCourierPartner(
   input: CourierRegistrationInput
 ): Promise<{ session: AuthSession | null; error?: string }> {
   try {
-    const supabase = getSupabase();
-
-    // 1. Sign up Supabase Auth User
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: input.workEmail.trim(),
-      password: input.password,
-      options: {
-        data: {
-          full_name: input.fullName,
-          role: 'COURIER_PARTNER',
-        },
+    // 1. Send registration payload to server-side API endpoint with admin privileges
+    // This auto-confirms user and creates company + profile without email SMTP rate limits
+    const response = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify(input),
     });
 
-    if (authError) {
-      return { session: null, error: authError.message };
+    const result = await response.json();
+
+    if (!response.ok || result.error) {
+      return { session: null, error: result.error || 'Registration failed.' };
     }
 
-    const userId = authData.user?.id;
-    if (!userId) {
-      return { session: null, error: 'User creation failed.' };
-    }
-
-    const companyCode = input.legalName
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '')
-      .slice(0, 10) || 'COURIER';
-
-    // 2. Insert Courier Company record
-    const { data: companyData, error: companyError } = await supabase
-      .from('courier_companies')
-      .insert({
-        name: input.legalName,
-        legal_name: input.legalName,
-        code: companyCode,
-        contact_email: input.contactEmail,
-        contact_phone: input.contactPhone,
-        address: input.address,
-        city: input.city,
-        state: input.state,
-        gstin: input.gstin || null,
-        status: 'PENDING',
-        credit_limit: 100000,
-        used_credit: 0,
-      })
-      .select()
-      .single();
-
-    if (companyError || !companyData) {
-      return { session: null, error: companyError?.message || 'Company record creation failed.' };
-    }
-
-    // 3. Create or update profile
-    const { error: profileError } = await supabase.from('profiles').upsert({
-      id: userId,
-      email: input.workEmail.trim(),
-      full_name: input.fullName,
-      phone: input.contactPhone,
-      role: 'COURIER_PARTNER',
-      company_id: companyData.id,
+    // 2. Sign in the client directly to establish local Supabase session & cookies
+    const supabase = getSupabase();
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email: input.workEmail.trim().toLowerCase(),
+      password: input.password,
     });
 
-    if (profileError) {
-      console.error('Profile creation error:', profileError);
+    if (signInError) {
+      console.warn('Auto sign-in after registration notice:', signInError);
     }
 
-    const createdCompany: CourierCompany = {
-      id: companyData.id,
-      name: companyData.name,
-      legalName: companyData.legal_name,
-      code: companyData.code,
-      contactEmail: companyData.contact_email,
-      contactPhone: companyData.contact_phone,
-      address: companyData.address,
-      city: companyData.city,
-      state: companyData.state,
-      gstin: companyData.gstin,
-      status: 'PENDING',
-      creditLimit: 100000,
-      usedCredit: 0,
-      createdAt: new Date().toISOString(),
-    };
+    const currentSession = await getCurrentAuthSession();
+    if (currentSession) {
+      return { session: currentSession };
+    }
 
-    const userProfile: UserProfile = {
-      id: userId,
-      email: input.workEmail.trim(),
+    const createdCompany: CourierCompany = result.company;
+    const createdProfile: UserProfile = {
+      id: result.userId || result.profile?.id,
+      email: input.workEmail.trim().toLowerCase(),
       fullName: input.fullName,
       phone: input.contactPhone,
       role: 'COURIER_PARTNER',
-      companyId: companyData.id,
-      companyName: companyData.name,
+      companyId: createdCompany?.id,
+      companyName: createdCompany?.name,
       companyStatus: 'PENDING',
     };
 
-    const newSession: AuthSession = {
-      user: userProfile,
-      company: createdCompany,
+    return {
+      session: {
+        user: createdProfile,
+        company: createdCompany,
+      },
     };
-
-    return { session: newSession };
   } catch (err: any) {
-    return { session: null, error: err.message || 'An unexpected error occurred during registration.' };
+    console.error('Registration error:', err);
+    return {
+      session: null,
+      error: err.message || 'An unexpected network error occurred during registration.',
+    };
   }
 }
 
@@ -236,7 +213,7 @@ export async function fetchAllCourierCompanies(): Promise<CourierCompany[]> {
         city: c.city,
         state: c.state,
         gstin: c.gstin,
-        status: c.status as CompanyStatus,
+        status: (c.status as CompanyStatus) || 'PENDING',
         rejectionReason: c.rejection_reason,
         createdAt: c.created_at,
         updatedAt: c.updated_at,
@@ -245,23 +222,44 @@ export async function fetchAllCourierCompanies(): Promise<CourierCompany[]> {
     return [];
   } catch (err: any) {
     console.error('Fetch companies error:', err);
-    throw err;
+    return [];
   }
 }
 
 export async function updateCourierCompanyStatus(
   companyId: string,
-  newStatus: 'ACTIVE' | 'REJECTED',
+  newStatus: 'ACTIVE' | 'REJECTED' | 'PENDING',
   rejectionReason?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // 1. Call server API endpoint with elevated service permissions
+    const res = await fetch('/api/admin/company-status', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        companyId,
+        status: newStatus,
+        rejectionReason: rejectionReason || null,
+      }),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return { success: true };
+    }
+
+    // 2. Direct client fallback if API route returns error
     const supabase = getSupabase();
     const updateData: any = {
       status: newStatus,
       updated_at: new Date().toISOString(),
     };
-    if (rejectionReason) {
+    if (rejectionReason !== undefined) {
       updateData.rejection_reason = rejectionReason;
+    } else if (newStatus === 'ACTIVE') {
+      updateData.rejection_reason = null;
     }
 
     const { error } = await supabase
@@ -270,10 +268,14 @@ export async function updateCourierCompanyStatus(
       .eq('id', companyId);
 
     if (error) {
-      return { success: false, error: error.message };
+      console.error('Update company status error:', error);
+      return { success: false, error: data.error || error.message };
     }
     return { success: true };
   } catch (err: any) {
+    console.error('Update company status network error:', err);
     return { success: false, error: err.message || 'Failed to update status' };
   }
 }
+
+

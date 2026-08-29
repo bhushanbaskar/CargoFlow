@@ -53,20 +53,53 @@ export default function LoginPage() {
     }
   };
 
-  const setDemoCredentials = (role: 'ADMIN' | 'COURIER_ACTIVE' | 'COURIER_PENDING' | 'CONDUCTOR') => {
+  const handleQuickLogin = async (targetEmail: string, targetPass: string) => {
+    setEmail(targetEmail);
+    setPassword(targetPass);
     setErrorMsg('');
+    setIsLoading(true);
+
+    try {
+      const res = await login(targetEmail, targetPass);
+      if (!res.success || !res.session) {
+        setErrorMsg(res.error || 'Invalid email or password.');
+        setIsLoading(false);
+        return;
+      }
+
+      const role = res.session.user.role;
+      const compStatus = res.session.company?.status || res.session.user.companyStatus;
+
+      if (role === 'SUPER_ADMIN') {
+        router.push('/admin/dashboard');
+      } else if (role === 'COURIER_PARTNER') {
+        if (compStatus === 'PENDING') {
+          router.push('/partner/pending');
+        } else if (compStatus === 'REJECTED') {
+          router.push('/partner/rejected');
+        } else {
+          router.push('/partner/dashboard');
+        }
+      } else if (role === 'CONDUCTOR') {
+        router.push('/conductor/dashboard');
+      } else {
+        router.push('/');
+      }
+    } catch (err) {
+      setErrorMsg('An unexpected error occurred during sign in.');
+      setIsLoading(false);
+    }
+  };
+
+  const setDemoCredentials = (role: 'ADMIN' | 'COURIER_ACTIVE' | 'COURIER_PENDING' | 'CONDUCTOR') => {
     if (role === 'ADMIN') {
-      setEmail('admin@msrtc.gov.in');
-      setPassword('password123');
+      handleQuickLogin('admin@msrtc.gov.in', 'password123');
     } else if (role === 'COURIER_ACTIVE') {
-      setEmail('dispatch@bluedart.com');
-      setPassword('password123');
+      handleQuickLogin('dispatch@bluedart.com', 'password123');
     } else if (role === 'COURIER_PENDING') {
-      setEmail('contact@swiftlog.in');
-      setPassword('password123');
+      handleQuickLogin('contact@swiftlog.in', 'password123');
     } else if (role === 'CONDUCTOR') {
-      setEmail('conductor.nashik@msrtc.gov.in');
-      setPassword('password123');
+      handleQuickLogin('conductor.nashik@msrtc.gov.in', 'password123');
     }
   };
 
