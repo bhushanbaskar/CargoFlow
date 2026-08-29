@@ -30,8 +30,11 @@ export function BookCapacityView() {
     createShipment,
     currentProfile,
     courierCompanies,
-    setActiveTab
+    setActiveTab,
+    backendStatus,
   } = useCargoFlow();
+
+  const isOffline = backendStatus === 'SIMULATED_OFFLINE';
 
   const [originStopId, setOriginStopId] = useState<string>('STP001'); // Nashik CBS
   const [destinationStopId, setDestinationStopId] = useState<string>('STP030'); // Pune Shivajinagar
@@ -52,7 +55,19 @@ export function BookCapacityView() {
   const currentCompany = useMemo(() => {
     return (
       courierCompanies.find(c => c.id === currentProfile.companyId) ||
-      courierCompanies[0]
+      courierCompanies[0] ||
+      {
+        id: 'c0000000-0000-0000-0000-000000000001',
+        name: 'BlueDart Express',
+        legalName: 'Blue Dart Express Limited',
+        code: 'BLUEDART',
+        contactEmail: 'dispatch@bluedart.com',
+        contactPhone: '+91 98230 11223',
+        creditLimit: 250000,
+        usedCredit: 34500,
+        status: 'ACTIVE' as const,
+        createdAt: '2026-08-01T10:00:00Z',
+      }
     );
   }, [courierCompanies, currentProfile]);
 
@@ -76,12 +91,12 @@ export function BookCapacityView() {
   const originStop = stops.find(s => s.id === originStopId);
   const destinationStop = stops.find(s => s.id === destinationStopId);
 
-  const handleBookingConfirm = () => {
+  const handleBookingConfirm = async () => {
     if (!selectedMatch) return;
     setIsReserving(true);
 
-    setTimeout(() => {
-      const shipment = createShipment({
+    try {
+      const shipment = await createShipment({
         courierCompanyId: currentCompany.id,
         courierCompanyName: currentCompany.name,
         senderName,
@@ -99,8 +114,11 @@ export function BookCapacityView() {
       });
 
       setCreatedShipment(shipment);
+    } catch (e) {
+      console.error('Booking failed:', e);
+    } finally {
       setIsReserving(false);
-    }, 600);
+    }
   };
 
   return (
@@ -126,13 +144,13 @@ export function BookCapacityView() {
 
         <div className="bg-zinc-800/90 backdrop-blur-md p-4 rounded-2xl border border-zinc-700/80 shrink-0 space-y-1 text-right">
           <div className="text-[11px] text-zinc-400 font-semibold uppercase tracking-wider">
-            {currentCompany.name} Credit
+            {currentCompany?.name || 'Partner'} Credit
           </div>
           <div className="text-xl font-mono font-bold text-lime-300">
-            ₹{(currentCompany.creditLimit - currentCompany.usedCredit).toLocaleString('en-IN')}
+            ₹{((currentCompany?.creditLimit ?? 100000) - (currentCompany?.usedCredit ?? 0)).toLocaleString('en-IN')}
           </div>
           <div className="text-[10px] text-zinc-400">
-            Limit: ₹{currentCompany.creditLimit.toLocaleString('en-IN')}
+            Limit: ₹{(currentCompany?.creditLimit ?? 100000).toLocaleString('en-IN')}
           </div>
         </div>
       </div>
@@ -388,12 +406,24 @@ export function BookCapacityView() {
         <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 lg:p-8 shadow-2xl border border-slate-200 space-y-6">
             <div className="text-center space-y-2">
-              <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+              <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto ${
+                isOffline ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-emerald-100 text-emerald-600'
+              }`}>
                 <CheckCircle2 className="w-8 h-8" />
               </div>
-              <h3 className="text-xl font-bold text-slate-900">Waybill Reserved Successfully!</h3>
+              <h3 className="text-xl font-bold text-slate-900">
+                {isOffline ? '✓ Saved on this device' : 'Waybill Reserved Successfully!'}
+              </h3>
               <p className="text-xs text-slate-500">
-                Capacity has been deducted from MSRTC Bus Trip <strong>{createdShipment.tripId}</strong>.
+                {isOffline ? (
+                  <span className="text-amber-800 font-medium">
+                    Pending synchronization · Primary datastore is unavailable, so this shipment is protected locally and will sync upon restoration.
+                  </span>
+                ) : (
+                  <span>
+                    Capacity has been deducted from MSRTC Bus Trip <strong>{createdShipment.tripId}</strong> and committed to central datastore.
+                  </span>
+                )}
               </p>
             </div>
 

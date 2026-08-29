@@ -1,4 +1,5 @@
 import { Stop, Route, Bus, ScheduledTrip, MatchOption } from './types';
+import PRECOMPUTED_ROUTES from './precomputed-routes.json';
 
 /**
  * Calculates straight-line Haversine distance in kilometers between two lat/lng coordinates.
@@ -102,14 +103,23 @@ export function findMatchingTrips(params: {
       continue;
     }
 
-    // 4. Calculate Distance and Estimated Fare
+    // 4. Calculate Road Distance and Estimated Fare
     let tripDistanceKm = 0;
-    for (let i = 0; i < routeMatch.subSequence.length - 1; i++) {
-      const s1 = routeMatch.subSequence[i];
-      const s2 = routeMatch.subSequence[i + 1];
-      tripDistanceKm += calculateDistanceKm(s1.latitude, s1.longitude, s2.latitude, s2.longitude);
+    const precomputed = (PRECOMPUTED_ROUTES as Record<string, any>)[route.id];
+    if (precomputed && precomputed.distanceKm) {
+      // Pro-rate distance according to subSequence fraction of total route stops
+      const fullSeq = getRouteStopsSequence(route, allStops);
+      const fraction = Math.max(0.2, (routeMatch.subSequence.length - 1) / Math.max(1, fullSeq.length - 1));
+      tripDistanceKm = Math.round(precomputed.distanceKm * fraction * 10) / 10;
+    } else {
+      for (let i = 0; i < routeMatch.subSequence.length - 1; i++) {
+        const s1 = routeMatch.subSequence[i];
+        const s2 = routeMatch.subSequence[i + 1];
+        // Apply realistic road curvature coefficient (~1.28x over straight-line)
+        tripDistanceKm += Math.round(calculateDistanceKm(s1.latitude, s1.longitude, s2.latitude, s2.longitude) * 1.28 * 10) / 10;
+      }
     }
-    if (tripDistanceKm === 0) tripDistanceKm = 50; // fallback default
+    if (tripDistanceKm === 0) tripDistanceKm = 50;
 
     // Bus Type Base Rate per kg per km
     let ratePerKgKm = 0.15; // Ordinary

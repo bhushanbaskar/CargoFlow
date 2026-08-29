@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useCargoFlow } from '@/components/context/cargoflow-context';
 import { HeaderNav } from '@/components/navigation/header-nav';
 import { ConductorView } from '@/components/views/conductor-view';
+import { SimulationController } from '@/components/views/simulation-controller';
+import { RecoveryCenterModal } from '@/components/views/recovery-center-modal';
 import { ArrowLeft, Bus, QrCode } from 'lucide-react';
 
 export default function ConductorDashboardPage() {
@@ -74,6 +76,9 @@ export default function ConductorDashboardPage() {
       <main className="flex-1">
         <ConductorView isScannerTab={isScannerTab} />
       </main>
+
+      <SimulationController />
+      <RecoveryCenterModal />
 
       <footer className="bg-white border-t border-slate-200/80 py-4 px-6 text-center text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2 max-w-[1600px] mx-auto w-full">
         <div>

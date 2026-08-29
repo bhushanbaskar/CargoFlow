@@ -9,6 +9,8 @@ import { ShipmentsView } from '@/components/views/shipments-view';
 import { InvoicesView } from '@/components/views/invoices-view';
 import { FleetMapView } from '@/components/views/fleet-map';
 import { EmailInboxView } from '@/components/views/email-inbox-view';
+import { SimulationController } from '@/components/views/simulation-controller';
+import { RecoveryCenterModal } from '@/components/views/recovery-center-modal';
 import {
   Building2,
   Package,
@@ -148,6 +150,9 @@ export default function CourierPartnerDashboardPage() {
       </div>
 
       <main className="flex-1">{renderContent()}</main>
+
+      <SimulationController />
+      <RecoveryCenterModal />
 
       <footer className="bg-white border-t border-slate-200/80 py-4 px-6 text-center text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2 max-w-[1600px] mx-auto w-full">
         <div>

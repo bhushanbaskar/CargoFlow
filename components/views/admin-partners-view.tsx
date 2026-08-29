@@ -17,17 +17,21 @@ import {
   Phone,
   AlertCircle,
   ExternalLink,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 
 export function AdminPartnersView() {
-  const { courierCompanies, approveCompany, rejectCompany } = useCargoFlow();
+  const { courierCompanies, approveCompany, rejectCompany, backendStatus, restoreConnection } = useCargoFlow();
+  const isOffline = backendStatus === 'SIMULATED_OFFLINE';
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | CompanyStatus>('ALL');
-  
+
   const [selectedCompany, setSelectedCompany] = useState<CourierCompany | null>(null);
   const [rejectReasonModal, setRejectReasonModal] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadingCompanyId, setLoadingCompanyId] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const filteredCompanies = courierCompanies.filter((company) => {
     const matchesSearch =
@@ -45,24 +49,35 @@ export function AdminPartnersView() {
   const activeCount = courierCompanies.filter((c) => c.status === 'ACTIVE').length;
   const rejectedCount = courierCompanies.filter((c) => c.status === 'REJECTED').length;
 
-  const handleApprove = async (companyId: string) => {
-    setIsSubmitting(true);
+  const handleApprove = async (companyId: string, companyName: string) => {
+    setLoadingCompanyId(companyId);
     try {
       await approveCompany(companyId);
+      setFeedbackMessage({ text: `${companyName} has been approved and activated!`, type: 'success' });
+      setTimeout(() => setFeedbackMessage(null), 4000);
+    } catch (err: any) {
+      setFeedbackMessage({ text: err.message || 'Failed to approve company.', type: 'error' });
+      setTimeout(() => setFeedbackMessage(null), 4000);
     } finally {
-      setIsSubmitting(false);
+      setLoadingCompanyId(null);
     }
   };
 
   const handleConfirmReject = async () => {
     if (!rejectReasonModal) return;
-    setIsSubmitting(true);
+    const targetId = rejectReasonModal;
+    setLoadingCompanyId(targetId);
     try {
-      await rejectCompany(rejectReasonModal, rejectionReason.trim() || 'Application declined by administrator review.');
+      await rejectCompany(targetId, rejectionReason.trim() || 'Application declined by administrator review.');
+      setFeedbackMessage({ text: `Company application declined.`, type: 'success' });
+      setTimeout(() => setFeedbackMessage(null), 4000);
       setRejectReasonModal(null);
       setRejectionReason('');
+    } catch (err: any) {
+      setFeedbackMessage({ text: err.message || 'Failed to decline company.', type: 'error' });
+      setTimeout(() => setFeedbackMessage(null), 4000);
     } finally {
-      setIsSubmitting(false);
+      setLoadingCompanyId(null);
     }
   };
 
@@ -79,7 +94,9 @@ export function AdminPartnersView() {
             Partner Applications & Verification
           </h1>
           <p className="text-xs sm:text-sm text-zinc-600 mt-1">
-            Review, approve, or decline courier partner registrations to access luggage hold cargo capacity.
+            {isOffline
+              ? 'Datastore offline. Partner verification records and application queues are suspended.'
+              : 'Review, approve, or decline courier partner registrations to access luggage hold cargo capacity.'}
           </p>
         </div>
 
@@ -91,7 +108,8 @@ export function AdminPartnersView() {
             </div>
             <div>
               <div className="text-[10px] font-mono font-bold text-amber-700 uppercase">Pending Review</div>
-              <div className="text-lg font-black text-amber-950">{pendingCount}</div>
+              <div className="text-lg font-black text-amber-950">{isOffline ? '—' : pendingCount}</div>
+              {isOffline && <div className="text-[9px] text-amber-700 font-semibold font-mono">Datastore offline</div>}
             </div>
           </div>
 
@@ -101,209 +119,202 @@ export function AdminPartnersView() {
             </div>
             <div>
               <div className="text-[10px] font-mono font-bold text-emerald-700 uppercase">Active Partners</div>
-              <div className="text-lg font-black text-emerald-950">{activeCount}</div>
+              <div className="text-lg font-black text-emerald-950">{isOffline ? '—' : activeCount}</div>
+              {isOffline && <div className="text-[9px] text-amber-700 font-semibold font-mono">Datastore offline</div>}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-zinc-200/90 shadow-2xs">
-        <div className="relative w-full sm:w-96">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-          <input
-            type="text"
-            placeholder="Search company, city, GSTIN, email..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-medium text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900"
-          />
-        </div>
-
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Filter className="w-4 h-4 text-zinc-400 hidden sm:block" />
-          <div className="flex items-center bg-zinc-100 p-1 rounded-xl w-full sm:w-auto">
-            {(['ALL', 'PENDING', 'ACTIVE', 'REJECTED'] as const).map((st) => (
-              <button
-                key={st}
-                onClick={() => setStatusFilter(st)}
-                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                  statusFilter === st
-                    ? 'bg-white text-zinc-950 shadow-2xs'
-                    : 'text-zinc-600 hover:text-zinc-900'
-                }`}
-              >
-                {st === 'ALL' ? `All (${courierCompanies.length})` : st}
-              </button>
-            ))}
+      {/* Main Content Area */}
+      {isOffline ? (
+        <div className="bg-white rounded-3xl p-10 border border-zinc-200 shadow-sm text-center max-w-xl mx-auto space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-sm">
+            <AlertTriangle className="w-8 h-8" />
           </div>
-        </div>
-      </div>
-
-      {/* Companies List */}
-      <div className="space-y-4">
-        {filteredCompanies.length === 0 ? (
-          <div className="bg-white rounded-3xl p-12 text-center border border-zinc-200 space-y-3">
-            <Building2 className="w-10 h-10 text-zinc-300 mx-auto" />
-            <h3 className="text-base font-bold text-zinc-800">No partner applications found</h3>
-            <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-              No registered companies matched your filter query.
+          <div className="space-y-1">
+            <h2 className="text-lg font-bold text-zinc-900">Oops, something went wrong.</h2>
+            <p className="text-zinc-600 text-xs leading-relaxed">
+              The partner applications and verification database is unavailable while the primary datastore is offline.
             </p>
           </div>
-        ) : (
-          filteredCompanies.map((company) => {
-            const isPending = company.status === 'PENDING';
-            const isActive = company.status === 'ACTIVE';
-            const isRejected = company.status === 'REJECTED';
-
-            return (
-              <div
-                key={company.id}
-                className={`bg-white rounded-3xl p-6 border transition-all ${
-                  isPending
-                    ? 'border-amber-300 shadow-md shadow-amber-500/5'
-                    : 'border-zinc-200/90 shadow-2xs hover:border-zinc-300'
-                }`}
+          <div className="pt-2">
+            <button
+              onClick={() => restoreConnection()}
+              className="px-5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs shadow-sm inline-flex items-center gap-2 cursor-pointer transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-lime-300" />
+              <span>Retry</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Feedback Banner */}
+          {feedbackMessage && (
+            <div
+              className={`p-4 rounded-2xl text-xs font-bold flex items-center justify-between shadow-md animate-in fade-in slide-in-from-top-2 ${
+                feedbackMessage.type === 'success'
+                  ? 'bg-emerald-50 border border-emerald-300 text-emerald-900'
+                  : 'bg-rose-50 border border-rose-300 text-rose-900'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {feedbackMessage.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                )}
+                <span>{feedbackMessage.text}</span>
+              </div>
+              <button
+                onClick={() => setFeedbackMessage(null)}
+                className="text-xs opacity-60 hover:opacity-100"
               >
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                  {/* Left Info Column */}
-                  <div className="space-y-3 flex-1">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                          isPending
-                            ? 'bg-amber-100 text-amber-900 border border-amber-200'
-                            : isActive
-                            ? 'bg-emerald-100 text-emerald-900 border border-emerald-200'
-                            : 'bg-rose-100 text-rose-900 border border-rose-200'
-                        }`}
-                      >
-                        {isPending && <Clock className="w-3.5 h-3.5" />}
-                        {isActive && <CheckCircle2 className="w-3.5 h-3.5" />}
-                        {isRejected && <XCircle className="w-3.5 h-3.5" />}
-                        <span>{company.status}</span>
-                      </span>
+                Dismiss
+              </button>
+            </div>
+          )}
 
-                      <span className="font-mono text-xs font-semibold text-zinc-400">
-                        CODE: {company.code}
-                      </span>
+          {/* Filter and Search Bar */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-zinc-200/90 shadow-2xs">
+            <div className="relative w-full sm:w-96">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search company, legal name, city, email..."
+                className="w-full pl-10 pr-4 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900"
+              />
+            </div>
 
-                      {company.createdAt && (
-                        <span suppressHydrationWarning className="text-xs text-zinc-400 font-mono">
-                          Applied: {new Date(company.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        </span>
-                      )}
-                    </div>
+            {/* Status Filter Tabs */}
+            <div className="flex items-center gap-1.5 p-1 bg-zinc-100 rounded-xl w-full sm:w-auto">
+              {(['ALL', 'PENDING', 'ACTIVE', 'REJECTED'] as const).map((status) => (
+                <button
+                  key={status}
+                  onClick={() => setStatusFilter(status)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    statusFilter === status
+                      ? 'bg-white text-zinc-950 shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-950'
+                  }`}
+                >
+                  {status === 'ALL' ? 'All Partners' : status}
+                </button>
+              ))}
+            </div>
+          </div>
 
-                    <div>
-                      <h3 className="text-xl font-extrabold text-zinc-950 flex items-center gap-2">
-                        {company.legalName || company.name}
-                      </h3>
-                      <p className="text-xs font-medium text-zinc-500">
-                        Trading as: <span className="font-semibold text-zinc-800">{company.name}</span>
-                      </p>
-                    </div>
+          {/* Companies List */}
+          <div className="space-y-4">
+            {filteredCompanies.length === 0 ? (
+              <div className="p-12 text-center bg-white rounded-3xl border border-zinc-200 space-y-3">
+                <Building2 className="w-8 h-8 text-zinc-300 mx-auto" />
+                <div className="text-sm font-bold text-zinc-700">No partner companies found</div>
+                <p className="text-xs text-zinc-400">Try adjusting your search query or status filter.</p>
+              </div>
+            ) : (
+              filteredCompanies.map((company) => {
+                const isPending = company.status === 'PENDING';
+                const isActive = company.status === 'ACTIVE';
+                const isRejected = company.status === 'REJECTED';
+                const isRowLoading = loadingCompanyId === company.id;
 
-                    {/* Metadata Grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-xs text-zinc-600">
-                      <div className="flex items-center gap-2">
-                        <MapPin className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                        <span>
-                          {company.city || 'Nashik'}, {company.state || 'Maharashtra'}
-                        </span>
-                      </div>
+                return (
+                  <div
+                    key={company.id}
+                    className={`p-6 rounded-3xl border transition-all ${
+                      isPending
+                        ? 'bg-white border-amber-200 shadow-md hover:border-amber-300'
+                        : isRejected
+                        ? 'bg-zinc-50/70 border-zinc-200 opacity-80'
+                        : 'bg-white border-zinc-200 shadow-xs hover:border-zinc-300'
+                    }`}
+                  >
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                      {/* Left Company Details */}
+                      <div className="space-y-2 flex-1">
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <div className="p-2.5 rounded-2xl bg-zinc-100 text-zinc-900">
+                            <Building2 className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-[10px] font-black uppercase text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded">
+                                {company.code}
+                              </span>
+                              <span
+                                className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider ${
+                                  isPending
+                                    ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                    : isActive
+                                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                    : 'bg-rose-100 text-rose-900 border border-rose-300'
+                                }`}
+                              >
+                                ● {company.status}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
 
-                      <div className="flex items-center gap-2">
-                        <Mail className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                        <span className="truncate">{company.contactEmail}</span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Phone className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                        <span>{company.contactPhone}</span>
-                      </div>
-                    </div>
-
-                    {company.gstin && (
-                      <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-zinc-50 border border-zinc-200 font-mono text-[11px] text-zinc-700">
-                        <FileText className="w-3 h-3 text-zinc-400" />
-                        <span>GSTIN: {company.gstin}</span>
-                      </div>
-                    )}
-
-                    {isRejected && company.rejectionReason && (
-                      <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
-                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                        <div>
-                          <span className="font-bold">Rejection Reason:</span> {company.rejectionReason}
+                        <div className="pt-1">
+                          <h3 className="text-base sm:text-lg font-black text-zinc-950">
+                            {company.legalName || company.name}
+                          </h3>
+                          <p className="text-xs font-medium text-zinc-500">
+                            Registered Trade Name: <strong>{company.name}</strong>
+                          </p>
                         </div>
                       </div>
-                    )}
-                  </div>
 
-                  {/* Actions Column */}
-                  <div className="flex flex-row lg:flex-col items-center lg:items-end justify-end gap-3 pt-4 lg:pt-0 border-t lg:border-t-0 border-zinc-100">
-                    {isPending ? (
-                      <div className="flex items-center gap-2.5 w-full lg:w-auto">
-                        <button
-                          onClick={() => setRejectReasonModal(company.id)}
-                          disabled={isSubmitting}
-                          className="flex-1 lg:flex-none px-4 py-2.5 rounded-xl bg-zinc-100 hover:bg-rose-50 text-rose-700 font-bold text-xs border border-zinc-200 hover:border-rose-200 transition-colors flex items-center justify-center gap-1.5"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          <span>Reject</span>
-                        </button>
-
-                        <button
-                          onClick={() => handleApprove(company.id)}
-                          disabled={isSubmitting}
-                          className="flex-1 lg:flex-none px-5 py-2.5 rounded-xl bg-zinc-950 hover:bg-lime-400 hover:text-zinc-950 text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Approve Company</span>
-                        </button>
-                      </div>
-                    ) : isActive ? (
+                      {/* Right Action Buttons */}
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-emerald-700 font-bold flex items-center gap-1 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Approved & Active</span>
-                        </span>
-                        <button
-                          onClick={() => setRejectReasonModal(company.id)}
-                          className="text-xs text-zinc-500 hover:text-rose-600 underline font-medium px-2 py-1"
-                        >
-                          Revoke Access
-                        </button>
+                        {isPending && (
+                          <>
+                            <button
+                              onClick={() => handleApprove(company.id, company.name)}
+                              disabled={isRowLoading}
+                              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>{isRowLoading ? 'Processing...' : 'Approve Partner'}</span>
+                            </button>
+                            <button
+                              onClick={() => setRejectReasonModal(company.id)}
+                              disabled={isRowLoading}
+                              className="px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs flex items-center gap-1.5 transition-all"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                              <span>Decline</span>
+                            </button>
+                          </>
+                        )}
+                        {isActive && (
+                          <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 font-bold text-xs border border-emerald-200 flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Verified & Active</span>
+                          </span>
+                        )}
                       </div>
-                    ) : (
-                      <button
-                        onClick={() => handleApprove(company.id)}
-                        className="px-4 py-2 rounded-xl bg-zinc-900 text-white font-bold text-xs hover:bg-lime-400 hover:text-zinc-950 transition-colors"
-                      >
-                        Re-Approve Company
-                      </button>
-                    )}
+                    </div>
                   </div>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+                );
+              })
+            )}
+          </div>
+        </>
+      )}
 
-      {/* Reject Reason Modal */}
+      {/* Decline Reason Modal */}
       {rejectReasonModal && (
-        <div className="fixed inset-0 z-50 bg-zinc-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full border border-zinc-200 space-y-6 shadow-2xl animate-in fade-in zoom-in-95">
-            <div className="space-y-2">
-              <h3 className="text-xl font-black text-zinc-950 flex items-center gap-2">
-                <XCircle className="w-5 h-5 text-rose-600" />
-                <span>Decline Partner Application</span>
-              </h3>
-              <p className="text-xs text-zinc-600">
-                Provide an administrative note explaining why this company registration was declined.
-              </p>
+        <div className="fixed inset-0 z-50 bg-zinc-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-zinc-200 space-y-4">
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-zinc-950">Decline Application</h3>
+              <p className="text-xs text-zinc-500">Provide an administrative reason for declining.</p>
             </div>
 
             <textarea
@@ -323,10 +334,10 @@ export function AdminPartnersView() {
               </button>
               <button
                 onClick={handleConfirmReject}
-                disabled={isSubmitting}
-                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors"
+                disabled={loadingCompanyId !== null}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors cursor-pointer"
               >
-                Confirm Decline
+                {loadingCompanyId ? 'Declining...' : 'Confirm Decline'}
               </button>
             </div>
           </div>

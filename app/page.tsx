@@ -11,6 +11,8 @@ import { AnalyticsView } from '@/components/views/analytics-view';
 import { FleetManageView } from '@/components/views/fleet-manage';
 import { InvoicesView } from '@/components/views/invoices-view';
 import { EmailInboxView } from '@/components/views/email-inbox-view';
+import { SimulationController } from '@/components/views/simulation-controller';
+import { RecoveryCenterModal } from '@/components/views/recovery-center-modal';
 
 // Landing Page Components
 import { Navbar } from '@/components/landing/navbar';
@@ -119,6 +121,9 @@ function MainAppShell({ onReturnToLanding }: { onReturnToLanding: () => void }) 
       <main className="flex-1">
         {renderActiveTabContent()}
       </main>
+
+      <SimulationController />
+      <RecoveryCenterModal />
 
       {/* Footer Branding Bar */}
       <footer className="bg-white border-t border-slate-200/80 py-4 px-6 text-center text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2 max-w-[1600px] mx-auto w-full">
