@@ -305,6 +305,57 @@ const INITIAL_NOTIFICATIONS: CargoNotification[] = [
 
 const CargoFlowContext = createContext<CargoFlowContextType | undefined>(undefined);
 
+function mapDbToEvidenceRecord(db: any): EvidenceRecord {
+  return {
+    id: db.id,
+    shipmentId: db.shipment_id,
+    uploadedBy: db.uploaded_by,
+    uploaderName: db.uploader_name,
+    uploaderRole: db.uploader_role,
+    fileUrl: db.file_url,
+    verificationStatus: db.verification_status,
+    latitude: db.latitude ? Number(db.latitude) : undefined,
+    longitude: db.longitude ? Number(db.longitude) : undefined,
+    locationName: db.location_name,
+    remarks: db.remarks || '',
+    isCorrection: db.is_correction,
+    correctedEvidenceId: db.corrected_evidence_id || undefined,
+    createdAt: db.created_at
+  };
+}
+
+function mapDbToDispute(db: any): Dispute {
+  return {
+    id: db.id,
+    shipmentId: db.shipment_id,
+    raisedBy: db.raised_by,
+    raiserName: db.raiser_name,
+    raisedRole: db.raised_role,
+    evidenceId: db.evidence_id,
+    reason: db.reason,
+    status: db.status as 'PENDING' | 'RESOLVED' | 'CLOSED',
+    resolution: db.resolution || undefined,
+    resolvedBy: db.resolved_by || undefined,
+    resolvedAt: db.resolved_at || undefined,
+    counterEvidenceUrl: db.counter_evidence_url || undefined,
+    createdAt: db.created_at
+  };
+}
+
+function mapDbToNotification(db: any): CargoNotification {
+  return {
+    id: db.id,
+    recipientId: db.recipient_id || undefined,
+    recipientRole: db.recipient_role || undefined,
+    shipmentId: db.shipment_id,
+    waybillNumber: db.waybill_number,
+    type: db.type as 'VERIFICATION_REQUEST' | 'DISPUTE_RAISED' | 'DISPUTE_RESOLVED',
+    message: db.message,
+    isRead: db.is_read,
+    timestamp: db.created_at
+  };
+}
+
 export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
   const [currentRole, setCurrentRole] = useState<UserRole>('SUPER_ADMIN');
   const [currentProfile, setCurrentProfile] = useState<UserProfile>(DEMO_USER_PROFILES[0]);
@@ -454,6 +505,32 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
 
     loadInitialData();
 
+    // ----------------------------------------------------
+    // STARTUP BUCKET INITIALIZATION
+    // ----------------------------------------------------
+    if (isSupabaseConfigured) {
+      const ensureStorageBucket = async () => {
+        try {
+          const supabase = getSupabase();
+          const { data: buckets, error } = await supabase.storage.listBuckets();
+          if (error) throw error;
+          
+          const exists = buckets.some(b => b.name === 'evidence');
+          if (!exists) {
+            const { error: createError } = await supabase.storage.createBucket('evidence', {
+              public: true,
+              allowedMimeTypes: ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'],
+              fileSizeLimit: 10 * 1024 * 1024 // 10MB
+            });
+            if (createError) console.warn('Could not create evidence bucket automatically:', createError);
+          }
+        } catch (err) {
+          console.warn('Error list/create storage bucket:', err);
+        }
+      };
+      ensureStorageBucket();
+    }
+
     if (isSupabaseConfigured) {
       try {
         const supabase = getSupabase();
@@ -482,6 +559,51 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       }
     }
   }, []);
+
+  // Fetch Verification System Data from Supabase if configured
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    const loadEvidenceSystemData = async () => {
+      try {
+        const supabase = getSupabase();
+
+        // 1. Fetch evidence records
+        const { data: recordsData, error: recError } = await supabase
+          .from('evidence_records')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (recError) throw recError;
+        if (recordsData) {
+          setEvidenceRecords(recordsData.map(mapDbToEvidenceRecord));
+        }
+
+        // 2. Fetch disputes
+        const { data: disputesData, error: dispError } = await supabase
+          .from('disputes')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (dispError) throw dispError;
+        if (disputesData) {
+          setDisputes(disputesData.map(mapDbToDispute));
+        }
+
+        // 3. Fetch notifications
+        const { data: notifData, error: notifError } = await supabase
+          .from('evidence_notifications')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (notifError) throw notifError;
+        if (notifData) {
+          setEvidenceNotifications(notifData.map(mapDbToNotification));
+        }
+      } catch (err) {
+        console.error('Error loading evidence verification system from Supabase:', err);
+      }
+    };
+
+    loadEvidenceSystemData();
+  }, [isAuthenticated, currentRole]);
 
   const refreshCompanies = async () => {
     const list = await fetchAllCourierCompanies();
@@ -777,13 +899,41 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
-  const uploadEvidenceFile = async (file: File): Promise<string> => {
+  const uploadEvidenceFile = async (fileInput: File | string): Promise<string> => {
     try {
       const supabase = getSupabase();
-      const fileName = `${Date.now()}-${file.name}`;
+      let file: File | Blob;
+      let name = `file-${Date.now()}`;
+      let mimeType = 'image/jpeg';
+
+      if (typeof fileInput === 'string') {
+        if (fileInput.startsWith('data:')) {
+          const arr = fileInput.split(',');
+          mimeType = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+          const bstr = atob(arr[1]);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+          }
+          const extension = mimeType.split('/')[1] || 'jpeg';
+          file = new Blob([u8arr], { type: mimeType });
+          name = `capture-${Date.now()}.${extension}`;
+        } else {
+          return fileInput;
+        }
+      } else {
+        file = fileInput;
+        name = `${Date.now()}-${fileInput.name}`;
+        mimeType = fileInput.type || 'image/jpeg';
+      }
+
       const { data, error } = await supabase.storage
         .from('evidence')
-        .upload(fileName, file);
+        .upload(name, file, {
+          contentType: mimeType,
+          upsert: true
+        });
 
       if (error) throw error;
 
@@ -793,14 +943,17 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
 
       return publicUrlData.publicUrl;
     } catch (err) {
-      console.warn('Supabase storage upload failed or not configured, using base64 fallback:', err);
+      console.warn('Supabase storage upload failed or not configured, using fallback:', err);
+      if (typeof fileInput === 'string') {
+        return fileInput;
+      }
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
           if (e.target?.result) resolve(e.target.result as string);
           else reject(new Error('Failed to read file'));
         };
-        reader.readAsDataURL(file);
+        reader.readAsDataURL(fileInput);
       });
     }
   };
@@ -815,13 +968,23 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
     correctedEvidenceId?: string
   ): Promise<EvidenceRecord> => {
     const timestamp = new Date().toISOString();
+
+    let finalFileUrl = fileUrl;
+    if (isSupabaseConfigured && fileUrl.startsWith('data:')) {
+      try {
+        finalFileUrl = await uploadEvidenceFile(fileUrl);
+      } catch (err) {
+        console.error('Failed to upload base64 image in addEvidenceRecord:', err);
+      }
+    }
+
     const newRecord: EvidenceRecord = {
       id: `ev-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       shipmentId,
       uploadedBy: currentProfile.id,
       uploaderName: currentProfile.fullName,
       uploaderRole: currentRole,
-      fileUrl,
+      fileUrl: finalFileUrl,
       verificationStatus: status,
       locationName,
       remarks,
@@ -830,9 +993,38 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       createdAt: timestamp
     };
 
+    if (isSupabaseConfigured) {
+      try {
+        const supabase = getSupabase();
+        const { data, error } = await supabase
+          .from('evidence_records')
+          .insert({
+            shipment_id: shipmentId,
+            uploaded_by: currentProfile.id,
+            uploader_name: currentProfile.fullName,
+            uploader_role: currentRole,
+            file_url: finalFileUrl,
+            verification_status: status,
+            location_name: locationName,
+            remarks: remarks,
+            is_correction: isCorrection,
+            corrected_evidence_id: correctedEvidenceId
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        if (data) {
+          newRecord.id = data.id;
+          newRecord.createdAt = data.created_at;
+        }
+      } catch (err) {
+        console.error('Failed to write evidence record to Supabase:', err);
+      }
+    }
+
     setEvidenceRecords(prev => [newRecord, ...prev]);
 
-    // Add a status history entry to the shipment
     setMasterShipments(prev =>
       prev.map(shp => {
         if (shp.id === shipmentId) {
@@ -845,7 +1037,7 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
                 timestamp,
                 location: locationName,
                 remarks: `[Evidence Uploaded - ${currentRole}] ${remarks}`,
-                photoUrl: fileUrl
+                photoUrl: finalFileUrl
               }
             ]
           };
@@ -854,7 +1046,6 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       })
     );
 
-    // Create verification request notification
     const shp = masterShipments.find(s => s.id === shipmentId);
     if (shp) {
       const recipientRole: UserRole = currentRole === 'COURIER_PARTNER' ? 'CONDUCTOR' : 'COURIER_PARTNER';
@@ -868,6 +1059,32 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
         isRead: false,
         timestamp
       };
+
+      if (isSupabaseConfigured) {
+        try {
+          const supabase = getSupabase();
+          const { data, error } = await supabase
+            .from('evidence_notifications')
+            .insert({
+              recipient_role: recipientRole,
+              shipment_id: shipmentId,
+              waybill_number: shp.waybillNumber,
+              type: 'VERIFICATION_REQUEST',
+              message: newNotif.message,
+              is_read: false
+            })
+            .select()
+            .single();
+          if (error) throw error;
+          if (data) {
+            newNotif.id = data.id;
+            newNotif.timestamp = data.created_at;
+          }
+        } catch (err) {
+          console.error('Failed to write notification to Supabase:', err);
+        }
+      }
+
       setEvidenceNotifications(prev => [newNotif, ...prev]);
     }
 
@@ -884,7 +1101,15 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
     const shp = masterShipments.find(s => s.id === shipmentId);
     if (!shp) return;
 
-    // 1. Create Dispute Record
+    let finalCounterUrl = counterEvidenceUrl;
+    if (isSupabaseConfigured && counterEvidenceUrl && counterEvidenceUrl.startsWith('data:')) {
+      try {
+        finalCounterUrl = await uploadEvidenceFile(counterEvidenceUrl);
+      } catch (err) {
+        console.error('Failed to upload counter evidence image:', err);
+      }
+    }
+
     const newDispute: Dispute = {
       id: `disp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       shipmentId,
@@ -894,17 +1119,48 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       evidenceId,
       reason,
       status: 'PENDING',
-      counterEvidenceUrl,
+      counterEvidenceUrl: finalCounterUrl,
       createdAt: timestamp
     };
-    setDisputes(prev => [newDispute, ...prev]);
 
-    // 2. Mark the targeted evidence record as 'Disputed'
+    if (isSupabaseConfigured) {
+      try {
+        const supabase = getSupabase();
+        const { data, error } = await supabase
+          .from('disputes')
+          .insert({
+            shipment_id: shipmentId,
+            raised_by: currentProfile.id,
+            raiser_name: currentProfile.fullName,
+            raised_role: currentRole,
+            evidence_id: evidenceId,
+            reason: reason,
+            status: 'PENDING',
+            counter_evidence_url: finalCounterUrl
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        if (data) {
+          newDispute.id = data.id;
+          newDispute.createdAt = data.created_at;
+        }
+
+        const { error: evError } = await supabase
+          .from('evidence_records')
+          .update({ verification_status: 'Disputed' })
+          .eq('id', evidenceId);
+        if (evError) throw evError;
+      } catch (err) {
+        console.error('Failed to write dispute to Supabase:', err);
+      }
+    }
+
+    setDisputes(prev => [newDispute, ...prev]);
     setEvidenceRecords(prev =>
       prev.map(rec => (rec.id === evidenceId ? { ...rec, verificationStatus: 'Disputed' } : rec))
     );
 
-    // 3. Update shipment status history
     setMasterShipments(prev =>
       prev.map(s => {
         if (s.id === shipmentId) {
@@ -917,7 +1173,7 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
                 timestamp,
                 location: currentProfile.depotName || 'Depot Hub',
                 remarks: `[DISPUTE RAISED] By ${currentProfile.fullName} (${currentRole}): ${reason}`,
-                photoUrl: counterEvidenceUrl
+                photoUrl: finalCounterUrl
               }
             ]
           };
@@ -926,7 +1182,6 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       })
     );
 
-    // 4. Create Notifications for Admin and opposite party
     const newNotifAdmin: CargoNotification = {
       id: `notif-${Date.now()}-adm`,
       recipientRole: 'SUPER_ADMIN',
@@ -950,6 +1205,32 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       timestamp
     };
 
+    if (isSupabaseConfigured) {
+      try {
+        const supabase = getSupabase();
+        await supabase.from('evidence_notifications').insert([
+          {
+            recipient_role: 'SUPER_ADMIN',
+            shipment_id: shipmentId,
+            waybill_number: shp.waybillNumber,
+            type: 'DISPUTE_RAISED',
+            message: newNotifAdmin.message,
+            is_read: false
+          },
+          {
+            recipient_role: oppositeRole,
+            shipment_id: shipmentId,
+            waybill_number: shp.waybillNumber,
+            type: 'DISPUTE_RAISED',
+            message: newNotifOpposite.message,
+            is_read: false
+          }
+        ]);
+      } catch (err) {
+        console.error('Failed to create dispute notifications in Supabase:', err);
+      }
+    }
+
     setEvidenceNotifications(prev => [newNotifAdmin, newNotifOpposite, ...prev]);
   };
 
@@ -962,7 +1243,39 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
     const targetDispute = disputes.find(d => d.id === disputeId);
     if (!targetDispute) return;
 
-    // 1. Update Dispute Status
+    if (isSupabaseConfigured) {
+      try {
+        const supabase = getSupabase();
+        const { error: dispError } = await supabase
+          .from('disputes')
+          .update({
+            status: 'RESOLVED',
+            resolution,
+            resolved_by: currentProfile.id,
+            resolved_at: timestamp
+          })
+          .eq('id', disputeId);
+        if (dispError) throw dispError;
+
+        const resolvedStatus: EvidenceVerificationStatus = action === 'APPROVE_COURIER' ? 'Verified' : 'Rejected';
+        const { error: evError } = await supabase
+          .from('evidence_records')
+          .update({ verification_status: resolvedStatus })
+          .eq('id', targetDispute.evidenceId);
+        if (evError) throw evError;
+
+        if (action === 'APPROVE_CONDUCTOR') {
+          const { error: evError2 } = await supabase
+            .from('evidence_records')
+            .update({ verification_status: 'Verified' })
+            .eq('uploaded_by', targetDispute.raisedBy);
+          if (evError2) throw evError2;
+        }
+      } catch (err) {
+        console.error('Failed to resolve dispute in Supabase:', err);
+      }
+    }
+
     setDisputes(prev =>
       prev.map(d =>
         d.id === disputeId
@@ -977,7 +1290,6 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       )
     );
 
-    // 2. Resolve Evidence status based on Admin decision
     const resolvedStatus: EvidenceVerificationStatus = action === 'APPROVE_COURIER' ? 'Verified' : 'Rejected';
     setEvidenceRecords(prev =>
       prev.map(rec => {
@@ -993,7 +1305,6 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
 
     const shp = masterShipments.find(s => s.id === targetDispute.shipmentId);
     if (shp) {
-      // 3. Update Shipment History
       setMasterShipments(prev =>
         prev.map(s => {
           if (s.id === shp.id) {
@@ -1014,7 +1325,6 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
         })
       );
 
-      // 4. Create Notifications for both Courier and Conductor
       const newNotifCourier: CargoNotification = {
         id: `notif-${Date.now()}-c`,
         recipientRole: 'COURIER_PARTNER',
@@ -1037,6 +1347,32 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
         timestamp
       };
 
+      if (isSupabaseConfigured) {
+        try {
+          const supabase = getSupabase();
+          await supabase.from('evidence_notifications').insert([
+            {
+              recipient_role: 'COURIER_PARTNER',
+              shipment_id: shp.id,
+              waybill_number: shp.waybillNumber,
+              type: 'DISPUTE_RESOLVED',
+              message: newNotifCourier.message,
+              is_read: false
+            },
+            {
+              recipient_role: 'CONDUCTOR',
+              shipment_id: shp.id,
+              waybill_number: shp.waybillNumber,
+              type: 'DISPUTE_RESOLVED',
+              message: newNotifConductor.message,
+              is_read: false
+            }
+          ]);
+        } catch (err) {
+          console.error('Failed to save dispute resolution notifications in Supabase:', err);
+        }
+      }
+
       setEvidenceNotifications(prev => [newNotifCourier, newNotifConductor, ...prev]);
     }
   };
@@ -1051,14 +1387,22 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
     const shp = masterShipments.find(s => s.id === shipmentId);
     if (!shp) return;
 
-    // 1. Create a Corrected Evidence Record pointing to original
+    let finalFileUrl = fileUrl;
+    if (isSupabaseConfigured && fileUrl.startsWith('data:')) {
+      try {
+        finalFileUrl = await uploadEvidenceFile(fileUrl);
+      } catch (err) {
+        console.error('Failed to upload system correction file:', err);
+      }
+    }
+
     const correctedRecord: EvidenceRecord = {
       id: `ev-${Date.now()}-corr`,
       shipmentId,
       uploadedBy: currentProfile.id,
       uploaderName: currentProfile.fullName,
       uploaderRole: currentRole,
-      fileUrl,
+      fileUrl: finalFileUrl,
       verificationStatus: 'Corrected',
       locationName: currentProfile.depotName || 'Control Center',
       remarks: `[Correction] ${remarks}`,
@@ -1067,14 +1411,47 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       createdAt: timestamp
     };
 
-    // 2. Mark original evidence status as 'Corrected'
+    if (isSupabaseConfigured) {
+      try {
+        const supabase = getSupabase();
+        const { data, error } = await supabase
+          .from('evidence_records')
+          .insert({
+            shipment_id: shipmentId,
+            uploaded_by: currentProfile.id,
+            uploader_name: currentProfile.fullName,
+            uploader_role: currentRole,
+            file_url: finalFileUrl,
+            verification_status: 'Corrected',
+            location_name: currentProfile.depotName || 'Control Center',
+            remarks: `[Correction] ${remarks}`,
+            is_correction: true,
+            corrected_evidence_id: originalEvidenceId
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        if (data) {
+          correctedRecord.id = data.id;
+          correctedRecord.createdAt = data.created_at;
+        }
+
+        const { error: evError } = await supabase
+          .from('evidence_records')
+          .update({ verification_status: 'Corrected' })
+          .eq('id', originalEvidenceId);
+        if (evError) throw evError;
+      } catch (err) {
+        console.error('Failed to write system correction to Supabase:', err);
+      }
+    }
+
     setEvidenceRecords(prev =>
       [correctedRecord, ...prev].map(rec =>
         rec.id === originalEvidenceId ? { ...rec, verificationStatus: 'Corrected' } : rec
       )
     );
 
-    // 3. Update shipment history
     setMasterShipments(prev =>
       prev.map(s => {
         if (s.id === shipmentId) {
@@ -1087,7 +1464,7 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
                 timestamp,
                 location: currentProfile.depotName || 'Control Center',
                 remarks: `[SYSTEM CORRECTION] Issued by Admin ${currentProfile.fullName}: ${remarks}`,
-                photoUrl: fileUrl
+                photoUrl: finalFileUrl
               }
             ]
           };
@@ -1096,7 +1473,6 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       })
     );
 
-    // 4. Notify parties of correction
     const notifCourier: CargoNotification = {
       id: `notif-${Date.now()}-cc`,
       recipientRole: 'COURIER_PARTNER',
@@ -1119,6 +1495,32 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       timestamp
     };
 
+    if (isSupabaseConfigured) {
+      try {
+        const supabase = getSupabase();
+        await supabase.from('evidence_notifications').insert([
+          {
+            recipient_role: 'COURIER_PARTNER',
+            shipment_id: shipmentId,
+            waybill_number: shp.waybillNumber,
+            type: 'DISPUTE_RESOLVED',
+            message: notifCourier.message,
+            is_read: false
+          },
+          {
+            recipient_role: 'CONDUCTOR',
+            shipment_id: shipmentId,
+            waybill_number: shp.waybillNumber,
+            type: 'DISPUTE_RESOLVED',
+            message: notifConductor.message,
+            is_read: false
+          }
+        ]);
+      } catch (err) {
+        console.error('Failed to save correction notifications in Supabase:', err);
+      }
+    }
+
     setEvidenceNotifications(prev => [notifCourier, notifConductor, ...prev]);
   };
 
@@ -1131,14 +1533,22 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
     const shp = masterShipments.find(s => s.id === shipmentId);
     if (!shp) return;
 
-    // 1. Add final Handover Evidence Record as 'Verified'
+    let finalFileUrl = fileUrl;
+    if (isSupabaseConfigured && fileUrl.startsWith('data:')) {
+      try {
+        finalFileUrl = await uploadEvidenceFile(fileUrl);
+      } catch (err) {
+        console.error('Failed to upload handover proof file:', err);
+      }
+    }
+
     const finalRecord: EvidenceRecord = {
       id: `ev-${Date.now()}-final`,
       shipmentId,
       uploadedBy: currentProfile.id,
       uploaderName: currentProfile.fullName,
       uploaderRole: currentRole,
-      fileUrl,
+      fileUrl: finalFileUrl,
       verificationStatus: 'Verified',
       locationName: 'Destination Depot Station',
       remarks: `[Final Handover Confirmed] ${remarks}`,
@@ -1146,7 +1556,41 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       createdAt: timestamp
     };
 
-    // 2. Set all other pending evidence records of this shipment to 'Verified'
+    if (isSupabaseConfigured) {
+      try {
+        const supabase = getSupabase();
+        const { data, error } = await supabase
+          .from('evidence_records')
+          .insert({
+            shipment_id: shipmentId,
+            uploaded_by: currentProfile.id,
+            uploader_name: currentProfile.fullName,
+            uploader_role: currentRole,
+            file_url: finalFileUrl,
+            verification_status: 'Verified',
+            location_name: 'Destination Depot Station',
+            remarks: `[Final Handover Confirmed] ${remarks}`,
+            is_correction: false
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        if (data) {
+          finalRecord.id = data.id;
+          finalRecord.createdAt = data.created_at;
+        }
+
+        const { error: evError } = await supabase
+          .from('evidence_records')
+          .update({ verification_status: 'Verified' })
+          .eq('shipment_id', shipmentId)
+          .eq('verification_status', 'Pending');
+        if (evError) throw evError;
+      } catch (err) {
+        console.error('Failed to write final handover to Supabase:', err);
+      }
+    }
+
     setEvidenceRecords(prev =>
       [finalRecord, ...prev].map(rec =>
         rec.shipmentId === shipmentId && rec.verificationStatus === 'Pending'
@@ -1155,7 +1599,6 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       )
     );
 
-    // 3. Update shipment status and history
     setMasterShipments(prev =>
       prev.map(s => {
         if (s.id === shipmentId) {
@@ -1168,7 +1611,7 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
                 timestamp,
                 location: 'Destination Depot Station',
                 remarks: `[HANDOVER CONFIRMED] Courier Amit Deshmukh confirmed final delivery: ${remarks}`,
-                photoUrl: fileUrl
+                photoUrl: finalFileUrl
               }
             ]
           };
@@ -1177,7 +1620,6 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       })
     );
 
-    // 4. Create completion notification
     const notifAdmin: CargoNotification = {
       id: `notif-${Date.now()}-fa`,
       recipientRole: 'SUPER_ADMIN',
@@ -1188,10 +1630,38 @@ export function CargoFlowProvider({ children }: { children: React.ReactNode }) {
       isRead: false,
       timestamp
     };
+
+    if (isSupabaseConfigured) {
+      try {
+        const supabase = getSupabase();
+        await supabase.from('evidence_notifications').insert({
+          recipient_role: 'SUPER_ADMIN',
+          shipment_id: shipmentId,
+          waybill_number: shp.waybillNumber,
+          type: 'DISPUTE_RESOLVED',
+          message: notifAdmin.message,
+          is_read: false
+        });
+      } catch (err) {
+        console.error('Failed to save handover completion notification in Supabase:', err);
+      }
+    }
+
     setEvidenceNotifications(prev => [notifAdmin, ...prev]);
   };
 
   const markNotificationAsRead = (notificationId: string) => {
+    if (isSupabaseConfigured && !notificationId.startsWith('notif-')) {
+      const supabase = getSupabase();
+      supabase
+        .from('evidence_notifications')
+        .update({ is_read: true })
+        .eq('id', notificationId)
+        .then(({ error }) => {
+          if (error) console.error('Failed to mark notification as read in Supabase:', error);
+        });
+    }
+
     setEvidenceNotifications(prev =>
       prev.map(n => (n.id === notificationId ? { ...n, isRead: true } : n))
     );
