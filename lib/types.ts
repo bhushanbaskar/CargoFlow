@@ -63,6 +63,9 @@ export interface StatusHistoryItem {
   timestamp: string;
   location: string;
   remarks: string;
+  photoUrl?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface Shipment {
@@ -147,5 +150,69 @@ export interface MatchOption {
   estimatedDeliveryHours: number;
   pathStops: Stop[];
   reason: string;
+}
+
+export interface EmailAlert {
+  id: string;
+  waybillNumber: string;
+  courierCompanyId: string;
+  courierCompanyName: string;
+  courierEmail: string;
+  status: 'LOADED' | 'DELIVERED';
+  locationName: string;
+  latitude?: number;
+  longitude?: number;
+  photoUrl?: string;
+  timestamp: string;
+  subject: string;
+  body: string;
+  isRead: boolean;
+}
+
+export type EvidenceVerificationStatus = 'Verified' | 'Pending' | 'Disputed' | 'Corrected' | 'Rejected';
+
+export interface EvidenceRecord {
+  id: string;
+  shipmentId: string;
+  uploadedBy: string; // profile id
+  uploaderName: string;
+  uploaderRole: UserRole;
+  fileUrl: string;
+  verificationStatus: EvidenceVerificationStatus;
+  latitude?: number;
+  longitude?: number;
+  locationName: string;
+  remarks: string;
+  isCorrection: boolean;
+  correctedEvidenceId?: string;
+  createdAt: string;
+}
+
+export interface Dispute {
+  id: string;
+  shipmentId: string;
+  raisedBy: string; // profile id
+  raiserName: string;
+  raisedRole: UserRole;
+  evidenceId: string;
+  reason: string;
+  status: 'PENDING' | 'RESOLVED' | 'CLOSED';
+  resolution?: string;
+  resolvedBy?: string; // admin profile id
+  resolvedAt?: string;
+  counterEvidenceUrl?: string;
+  createdAt: string;
+}
+
+export interface CargoNotification {
+  id: string;
+  recipientId?: string; // if null, role-based or general
+  recipientRole?: UserRole;
+  shipmentId: string;
+  waybillNumber: string;
+  type: 'VERIFICATION_REQUEST' | 'DISPUTE_RAISED' | 'DISPUTE_RESOLVED';
+  message: string;
+  isRead: boolean;
+  timestamp: string;
 }
 

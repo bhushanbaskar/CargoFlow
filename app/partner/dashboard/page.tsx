@@ -8,6 +8,7 @@ import { BookCapacityView } from '@/components/views/book-capacity';
 import { ShipmentsView } from '@/components/views/shipments-view';
 import { InvoicesView } from '@/components/views/invoices-view';
 import { FleetMapView } from '@/components/views/fleet-map';
+import { EmailInboxView } from '@/components/views/email-inbox-view';
 import {
   Building2,
   Package,
@@ -80,6 +81,8 @@ export default function CourierPartnerDashboardPage() {
         return <InvoicesView />;
       case 'fleet-map':
         return <FleetMapView />;
+      case 'notifications':
+        return <EmailInboxView />;
       default:
         return <BookCapacityView />;
     }

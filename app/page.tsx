@@ -10,6 +10,7 @@ import { ConductorView } from '@/components/views/conductor-view';
 import { AnalyticsView } from '@/components/views/analytics-view';
 import { FleetManageView } from '@/components/views/fleet-manage';
 import { InvoicesView } from '@/components/views/invoices-view';
+import { EmailInboxView } from '@/components/views/email-inbox-view';
 
 // Landing Page Components
 import { Navbar } from '@/components/landing/navbar';
@@ -88,6 +89,8 @@ function MainAppShell({ onReturnToLanding }: { onReturnToLanding: () => void }) 
         return <ConductorView isScannerTab={false} />;
       case 'qr-scanner':
         return <ConductorView isScannerTab={true} />;
+      case 'notifications':
+        return <EmailInboxView />;
       default:
         return <FleetMapView />;
     }

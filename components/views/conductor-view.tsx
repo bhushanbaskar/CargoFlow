@@ -13,7 +13,12 @@ import {
   ArrowRight,
   ShieldCheck,
   AlertCircle,
-  Search
+  Search,
+  Camera,
+  Upload,
+  X,
+  RefreshCw,
+  Globe
 } from 'lucide-react';
 
 export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean }) {
@@ -23,7 +28,9 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
     routes,
     shipments,
     updateShipmentStatus,
-    currentProfile
+    currentProfile,
+    addEvidenceRecord,
+    raiseDispute
   } = useCargoFlow();
 
   // Conductor is assigned to Trip TRP001 (Bus MH-15-BD-1021)
@@ -39,6 +46,130 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
   const [activeTabSub, setActiveTabSub] = useState<'LIST' | 'SCAN'>(isScannerTab ? 'SCAN' : 'LIST');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Verification Modal States
+  const [verifyingShipment, setVerifyingShipment] = useState<any | null>(null);
+  const [targetStatus, setTargetStatus] = useState<'LOADED' | 'DELIVERED' | null>(null);
+  const [photoData, setPhotoData] = useState<string | null>(null);
+  const [gpsCoords, setGpsCoords] = useState<{ latitude: number; longitude: number; accuracy?: number; source: string } | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [remarks, setRemarks] = useState('');
+  const [isDisputing, setIsDisputing] = useState(false);
+  const [disputeReason, setDisputeReason] = useState('');
+
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+
+  // Start Camera
+  const startCamera = async () => {
+    setCameraError(null);
+    setPhotoData(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' }
+      });
+      setActiveStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err: any) {
+      console.error('Camera access error:', err);
+      setCameraError('Could not access camera. Please upload an image or allow permissions.');
+    }
+  };
+
+  // Stop Camera
+  const stopCamera = () => {
+    if (activeStream) {
+      activeStream.getTracks().forEach(track => track.stop());
+      setActiveStream(null);
+    }
+  };
+
+  // Capture Photo
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
+      if (context) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const base64 = canvas.toDataURL('image/jpeg', 0.85);
+        setPhotoData(base64);
+        stopCamera();
+      }
+    }
+  };
+
+  // File Upload Handler
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setPhotoData(event.target.result as string);
+          stopCamera();
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Geolocation and Camera mount hook
+  React.useEffect(() => {
+    if (verifyingShipment) {
+      setGpsLoading(true);
+      setGpsCoords(null);
+      setRemarks('');
+      setPhotoData(null);
+      setCameraError(null);
+
+      startCamera();
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            setGpsCoords({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: Math.round(position.coords.accuracy),
+              source: 'Device GPS'
+            });
+            setGpsLoading(false);
+          },
+          (err) => {
+            console.warn('Geolocation failed:', err);
+            setGpsCoords({
+              latitude: 19.9975,
+              longitude: 73.7898,
+              accuracy: 50,
+              source: 'Depot Fallback (Default)'
+            });
+            setGpsLoading(false);
+          },
+          { enableHighAccuracy: true, timeout: 6000 }
+        );
+      } else {
+        setGpsCoords({
+          latitude: 19.9975,
+          longitude: 73.7898,
+          accuracy: 50,
+          source: 'System Fallback'
+        });
+        setGpsLoading(false);
+      }
+    } else {
+      stopCamera();
+    }
+    return () => {
+      stopCamera();
+    };
+  }, [verifyingShipment]);
+
   const handleScanSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!scanInput) return;
@@ -51,11 +182,20 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
     );
 
     if (match) {
-      const nextStatus = match.status === 'RESERVED' ? 'LOADED' : 'DELIVERED';
-      updateShipmentStatus(match.id, nextStatus, `Scanned & processed by Conductor ${currentProfile.fullName}`);
-      setSuccessMessage(`Waybill ${match.waybillNumber} updated to ${nextStatus}!`);
-      setScanInput('');
-      setTimeout(() => setSuccessMessage(null), 4000);
+      let nextStatus: 'LOADED' | 'DELIVERED' | null = null;
+      if (match.status === 'RESERVED') {
+        nextStatus = 'LOADED';
+      } else if (match.status === 'LOADED' || match.status === 'IN_TRANSIT') {
+        nextStatus = 'DELIVERED';
+      }
+
+      if (nextStatus) {
+        setVerifyingShipment(match);
+        setTargetStatus(nextStatus);
+        setScanInput('');
+      } else {
+        alert(`Shipment ${match.waybillNumber} is currently in '${match.status}' status. Verification is only for Loading or Unloading events.`);
+      }
     } else {
       alert(`Waybill or QR hash '${scanInput}' not found on active trip roster.`);
     }
@@ -228,7 +368,10 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
 
                   {shp.status === 'RESERVED' && (
                     <button
-                      onClick={() => updateShipmentStatus(shp.id, 'LOADED', `Loaded by Conductor ${currentProfile.fullName}`)}
+                      onClick={() => {
+                        setVerifyingShipment(shp);
+                        setTargetStatus('LOADED');
+                      }}
                       className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-xs"
                     >
                       Mark LOADED
@@ -246,7 +389,10 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
 
                   {shp.status === 'IN_TRANSIT' && (
                     <button
-                      onClick={() => updateShipmentStatus(shp.id, 'DELIVERED', `Handed over to consignee`)}
+                      onClick={() => {
+                        setVerifyingShipment(shp);
+                        setTargetStatus('DELIVERED');
+                      }}
                       className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs"
                     >
                       Mark DELIVERED
@@ -262,6 +408,239 @@ export function ConductorView({ isScannerTab = false }: { isScannerTab?: boolean
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {/* Verification Capture Modal Overlay */}
+      {verifyingShipment && targetStatus && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden border border-slate-100 shadow-2xl flex flex-col p-6 space-y-5 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900 font-sans flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-amber-600" />
+                  {targetStatus === 'LOADED' ? 'Step 1: Pickup Verification' : 'Step 2: Unload Verification'}
+                </h3>
+                <p className="text-xs text-slate-500 font-semibold font-mono mt-0.5">
+                  Waybill: {verifyingShipment.waybillNumber} • Action: <span className="text-amber-700 font-bold">{targetStatus === 'LOADED' ? 'PICKUP / LOADING' : 'DELIVERY / UNLOADING'}</span>
+                </p>
+              </div>
+              <button 
+                onClick={() => setVerifyingShipment(null)}
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Live Camera View & Capture */}
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                1. Capture Waypoint Photo Proof
+              </label>
+
+              <div className="relative bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 flex flex-col items-center justify-center aspect-video shadow-inner">
+                {activeStream && !photoData && (
+                  <video 
+                    ref={videoRef} 
+                    autoPlay 
+                    playsInline 
+                    className="w-full h-full object-cover"
+                  />
+                )}
+
+                {photoData && (
+                  <img 
+                    src={photoData} 
+                    alt="Captured Proof" 
+                    className="w-full h-full object-cover"
+                  />
+                )}
+
+                {!activeStream && !photoData && (
+                  <div className="p-6 text-center space-y-2">
+                    <Camera className="w-10 h-10 text-slate-600 mx-auto" />
+                    <p className="text-slate-400 text-xs font-medium">Camera stream is loading or inactive.</p>
+                    {cameraError && <p className="text-rose-400 text-[11px] px-4">{cameraError}</p>}
+                  </div>
+                )}
+
+                <canvas ref={canvasRef} className="hidden" />
+
+                {/* Overlaid Camera Action Controls */}
+                <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-2 px-4">
+                  {activeStream && !photoData && (
+                    <button
+                      type="button"
+                      onClick={capturePhoto}
+                      className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-full shadow-lg flex items-center gap-1.5 transition-all active:scale-95"
+                    >
+                      <Camera className="w-4 h-4" />
+                      Take Photo
+                    </button>
+                  )}
+
+                  {photoData && (
+                    <button
+                      type="button"
+                      onClick={startCamera}
+                      className="px-4 py-2 bg-slate-900/90 hover:bg-slate-950 text-white text-xs font-bold rounded-full shadow-lg flex items-center gap-1.5 transition-all"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Retake
+                    </button>
+                  )}
+
+                  {/* Device File Input Backup */}
+                  <label className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-full shadow-lg flex items-center gap-1.5 cursor-pointer transition-all border border-slate-700">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Upload File</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={handleFileUpload} 
+                      className="hidden" 
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Present Geolocation Telemetry */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-2">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                <Globe className="w-4 h-4 text-amber-600" />
+                2. Live GPS Telemetry (Present Location)
+              </label>
+
+              {gpsLoading && (
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
+                  <span>Retrieving satellite coordinate telemetry...</span>
+                </div>
+              )}
+
+              {gpsCoords && (
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">Present Latitude:</span>
+                    <strong className="text-slate-950 font-mono font-bold">{gpsCoords.latitude.toFixed(6)}</strong>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">Present Longitude:</span>
+                    <strong className="text-slate-950 font-mono font-bold">{gpsCoords.longitude.toFixed(6)}</strong>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-200 text-slate-400">
+                    <span>Source: {gpsCoords.source}</span>
+                    <span>Accuracy: &plusmn;{gpsCoords.accuracy || 15}m</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Dispute Checkbox */}
+            <div className="bg-rose-50/40 border border-rose-200/60 p-3 rounded-2xl flex flex-col gap-2">
+              <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={isDisputing}
+                  onChange={e => {
+                    setIsDisputing(e.target.checked);
+                    if (!e.target.checked) setDisputeReason('');
+                  }}
+                  className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+                />
+                <span className="text-rose-700">Flag Discrepancy / Raise Dispute</span>
+              </label>
+
+              {isDisputing && (
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-rose-800 uppercase font-mono">Reason for Discrepancy</label>
+                  <input
+                    type="text"
+                    value={disputeReason}
+                    onChange={e => setDisputeReason(e.target.value)}
+                    placeholder="e.g. Weight mismatch: actual weight is 22kg, waybill says 15kg."
+                    className="w-full bg-white border border-rose-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-rose-600 font-semibold"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Remarks Input */}
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                3. Dispatch Notes / Verification Remarks
+              </label>
+              <input
+                type="text"
+                value={remarks}
+                onChange={e => setRemarks(e.target.value)}
+                placeholder="e.g. Seal checked. Loaded on Bay 4 hold."
+                className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 outline-none focus:border-amber-600 font-semibold"
+              />
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setVerifyingShipment(null)}
+                className="flex-1 py-2.5 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-extrabold text-slate-600 transition-colors"
+              >
+                Cancel Scan
+              </button>
+              <button
+                type="button"
+                disabled={!photoData || gpsLoading}
+                onClick={async () => {
+                  const finalRemarks = remarks.trim() || `${targetStatus === 'LOADED' ? 'Loaded' : 'Unloaded'} at present waypoint stop.`;
+                  
+                  // Update shipment status in context
+                  updateShipmentStatus(verifyingShipment.id, targetStatus, finalRemarks, {
+                    photoUrl: photoData || undefined,
+                    latitude: gpsCoords?.latitude,
+                    longitude: gpsCoords?.longitude
+                  });
+
+                  // Add evidence record
+                  const status = isDisputing ? 'Disputed' : 'Pending';
+                  const record = await addEvidenceRecord(
+                    verifyingShipment.id,
+                    photoData || '',
+                    finalRemarks,
+                    currentProfile.depotName || 'Depot Hub',
+                    status
+                  );
+
+                  // If Conductor raised a dispute, log it
+                  if (isDisputing && disputeReason) {
+                    await raiseDispute(
+                      verifyingShipment.id,
+                      record.id,
+                      disputeReason,
+                      photoData || undefined
+                    );
+                  }
+
+                  setSuccessMessage(`Waybill ${verifyingShipment.waybillNumber} verified & updated to ${targetStatus}!`);
+                  setVerifyingShipment(null);
+                  setIsDisputing(false);
+                  setDisputeReason('');
+                  setTimeout(() => setSuccessMessage(null), 4000);
+                }}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-98 ${
+                  photoData && !gpsLoading
+                    ? 'bg-amber-600 hover:bg-amber-500 cursor-pointer'
+                    : 'bg-slate-300 cursor-not-allowed text-slate-500 shadow-none'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4" />
+                Submit Verification
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

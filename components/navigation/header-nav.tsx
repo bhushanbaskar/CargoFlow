@@ -34,11 +34,19 @@ export function HeaderNav() {
     courierCompanies,
     isSimulating,
     toggleSimulation,
+    emailAlerts,
   } = useCargoFlow();
 
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
 
   const pendingAppsCount = courierCompanies.filter((c) => c.status === 'PENDING').length;
+  
+  const currentCompName = currentCompany?.name || currentProfile?.companyName || '';
+  const unreadMailsCount = emailAlerts.filter(
+    (alert) =>
+      !alert.isRead &&
+      (alert.courierCompanyId === currentCompany?.id || alert.courierCompanyName === currentCompName)
+  ).length;
 
   const getNavTabs = () => {
     if (currentRole === 'SUPER_ADMIN') {
@@ -54,6 +62,7 @@ export function HeaderNav() {
         { id: 'book-capacity', label: 'Book Capacity' },
         { id: 'my-shipments', label: 'My Waybills' },
         { id: 'invoices', label: 'Invoices & Credit' },
+        { id: 'notifications', label: 'Email Alerts', badge: unreadMailsCount },
       ];
     } else {
       return [
